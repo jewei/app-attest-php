@@ -1,0 +1,69 @@
+{
+    "$schema": "https://getcomposer.org/schema.json",
+    "name": "jewei/app-attest-php",
+    "type": "library",
+    "description": "Verify Apple App Attest attestations and assertions in PHP, with no dependencies beyond ext-openssl",
+    "keywords": [
+        "app-attest",
+        "apple",
+        "devicecheck",
+        "attestation",
+        "assertion",
+        "ios"
+    ],
+    "license": "MIT",
+    "require": {
+        "php": "^8.3.0",
+        "ext-openssl": "*"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.32",
+        "pestphp/pest": "^4.0 || ^5.3",
+        "phpstan/phpstan": "^2.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "AppAttest\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "AppAttest\\Tests\\Support\\": "tests/Support/"
+        }
+    },
+    "scripts": {
+        "test": [
+            "@test:architecture",
+            "@test:types",
+            "@test:unit"
+        ],
+        "test:unit": "@php vendor/bin/pest",
+        "test:mutation": "@php vendor/bin/pest --mutate --parallel --class=\"AppAttest\\Verifier,AppAttest\\Internal\\Cbor,AppAttest\\Internal\\Der,AppAttest\\Internal\\AuthenticatorData,AppAttest\\Internal\\CertificateChain\"",
+        "test:architecture": "@php tests/Tooling/check-architecture.php",
+        "test:types": [
+            "@php vendor/bin/phpstan analyse --no-progress",
+            "@php vendor/bin/phpstan analyse --no-progress --configuration=phpstan-tests.neon.dist"
+        ]
+    },
+    "scripts-descriptions": {
+        "test": "Run the architecture check, static analysis, and the test suite",
+        "test:unit": "Run the test suite",
+        "test:mutation": "Mutation-test the verifier and its internal decoders",
+        "test:architecture": "Check that only src/ and tests/Codec/ use AppAttest\\Internal",
+        "test:types": "Run PHPStan at the maximum level against source and test code on PHP 8.3"
+    },
+    "authors": [
+        {
+            "name": "Jewei Mak",
+            "email": "jewei.mak@gmail.com"
+        }
+    ],
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
