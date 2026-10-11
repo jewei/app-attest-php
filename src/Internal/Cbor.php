@@ -11,8 +11,10 @@ use AppAttest\Exception\VerificationException;
  * @internal A strict decoder for the CBOR (RFC 8949) subset that App Attest uses.
  *
  * It accepts unsigned and negative integers, byte strings, UTF-8 text strings,
- * arrays, and maps, all with definite lengths. It refuses tags, floats, simple
- * values, indefinite lengths, integers outside the 64-bit PHP int range,
+ * arrays, maps, false, true, and null, all with definite lengths. Apple may add
+ * authenticator data extensions with such values, and an unknown extension must
+ * not refuse every key. It refuses tags, floats, other simple values,
+ * indefinite lengths, integers outside the 64-bit PHP int range,
  * duplicate or non-scalar map keys, deep nesting, and large containers. Each
  * length is checked against the remaining input before any data is read.
  *
@@ -21,7 +23,7 @@ use AppAttest\Exception\VerificationException;
  * same, and App Attest signs authenticator data as raw bytes, not the CBOR
  * around it.
  *
- * Results: int, string (text), ByteString, list<mixed> (array), and CborMap.
+ * Results: int, string (text), ByteString, list<mixed> (array), CborMap, bool, and null.
  * PHP turns a text key such as "1" into the int key 1; such a key and the
  * integer 1 count as duplicates.
  */
@@ -68,6 +70,17 @@ final class Cbor
 
         $initial = ord(self::take($data, $offset, 1));
         $major = $initial >> 5;
+
+        // false, true, and null; every other major type 7 value (floats, other simple values, break) is refused.
+        if ($major === 7) {
+            return match ($initial) {
+                0xF4 => false,
+                0xF5 => true,
+                0xF6 => null,
+                default => throw self::malformed('The CBOR data has a float or an unsupported simple value.'),
+            };
+        }
+
         $argument = self::argument($data, $offset, $initial & 0x1F);
 
         return match ($major) {
@@ -77,7 +90,7 @@ final class Cbor
             3 => self::text(self::take($data, $offset, $argument)),
             4 => self::sequence($data, $offset, $argument, $depth),
             5 => self::map($data, $offset, $argument, $depth),
-            default => throw self::malformed('The CBOR data has a tag, a float, or a simple value.'),
+            default => throw self::malformed('The CBOR data has a tag.'),
         };
     }
 

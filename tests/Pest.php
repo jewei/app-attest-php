@@ -3,11 +3,11 @@
 declare(strict_types=1);
 
 use AppAttest\AppId;
+use AppAttest\CategoryPolicy;
 use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\Exception\VerificationException;
 use AppAttest\Tests\Support\TestAuthority;
-use AppAttest\ValidationCategory;
 use AppAttest\Verifier;
 
 function testAppId(): AppId
@@ -20,26 +20,13 @@ function testClientDataHash(): string
     return hash('sha256', 'one-time challenge', true);
 }
 
-/** @param array<mixed>|null $categories */
 function testVerifier(
     Environment $environment = Environment::Production,
-    ?array $categories = null,
+    ?CategoryPolicy $categories = null,
     ?AppId $appId = null,
     ?TestAuthority $authority = null,
 ): Verifier {
-    return new Verifier($appId ?? testAppId(), $environment, $categories === null ? null : categoryList($categories), ($authority ?? TestAuthority::shared())->rootPem);
-}
-
-/**
- * @param  array<mixed>  $categories
- * @return list<ValidationCategory>
- */
-function categoryList(array $categories): array
-{
-    return array_map(
-        static fn (mixed $category): ValidationCategory => $category instanceof ValidationCategory ? $category : throw new \RuntimeException('Not a ValidationCategory.'),
-        array_values($categories),
-    );
+    return new Verifier($appId ?? testAppId(), $environment, $categories ?? CategoryPolicy::any(), ($authority ?? TestAuthority::shared())->rootPem);
 }
 
 /**
@@ -146,7 +133,7 @@ function appleSample(): array
     $sample = loadSpec('apple-sample-attestation.json');
 
     return [
-        'verifier' => new Verifier(new AppId(specString($sample, 'appIdPrefix'), specString($sample, 'bundleId')), Environment::Production, null),
+        'verifier' => new Verifier(new AppId(specString($sample, 'appIdPrefix'), specString($sample, 'bundleId')), Environment::Production, CategoryPolicy::any()),
         'attestation' => (string) base64_decode(specString($sample, 'attestation'), true),
         'keyId' => (string) base64_decode(specString($sample, 'keyId'), true),
         'clientDataHash' => specString($sample, 'clientDataHash'),

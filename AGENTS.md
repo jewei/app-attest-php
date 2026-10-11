@@ -13,4 +13,4 @@
 
 ## Checks
 
-Run before you hand off: `composer test` and `vendor/bin/pint --test`. Mutation tests and coverage need pcov or Xdebug; they run in CI, or locally in a `php:8.3-cli` container.
+Run before you hand off: `composer test` and `vendor/bin/pint --test`. Mutation tests and coverage need pcov or Xdebug; they run in CI, or locally in a `php:8.3-cli` container after `pecl install pcov` (Composer installs Pest 4 on PHP 8.3).

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AppAttest\AppId;
+use AppAttest\CategoryPolicy;
 use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\Exception\VerificationException;
@@ -42,24 +43,33 @@ it('names the AAGUID of each environment', function (): void {
 
 it('uses the pinned Apple root by default', function (): void {
     $attestation = testAttestation();
-    $verifier = new Verifier(testAppId(), Environment::Production, null);
+    $verifier = new Verifier(testAppId(), Environment::Production, CategoryPolicy::any());
 
     expect(failureOf(fn () => $verifier->verifyAttestation($attestation['attestation'], $attestation['keyId'], testClientDataHash())))
         ->toBe(Failure::InvalidCertificate);
 });
 
-it('refuses an empty or mixed category list', function (array $categories): void {
+it('refuses a category policy that is not a CategoryPolicy', function (mixed $categories): void {
     // Reflection passes the wrong types that a caller without static analysis could pass.
     expect(fn () => (new \ReflectionClass(Verifier::class))->newInstance(testAppId(), Environment::Production, $categories))
-        ->toThrow(\InvalidArgumentException::class);
+        ->toThrow(\TypeError::class);
 })->with([
-    'empty' => [[]],
-    'not a list' => [['a' => ValidationCategory::AppStore]],
-    'an integer' => [[ValidationCategory::AppStore, 4]],
+    'null' => [null],
+    'a list' => [[ValidationCategory::AppStore]],
 ]);
 
+it('names what each category policy accepts', function (): void {
+    expect(CategoryPolicy::only(ValidationCategory::AppStore)->allows(ValidationCategory::AppStore))->toBeTrue()
+        ->and(CategoryPolicy::only(ValidationCategory::AppStore)->allows(ValidationCategory::TestFlight))->toBeFalse()
+        ->and(CategoryPolicy::only(ValidationCategory::AppStore)->allows(null))->toBeFalse()
+        ->and(CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore)->allows(null))->toBeTrue()
+        ->and(CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore)->allows(ValidationCategory::Development))->toBeFalse()
+        ->and(CategoryPolicy::any()->allows(ValidationCategory::Development))->toBeTrue()
+        ->and(CategoryPolicy::any()->allows(null))->toBeTrue();
+});
+
 it('refuses a trust anchor that is not a CA certificate PEM', function (string $anchor): void {
-    expect(fn () => new Verifier(testAppId(), Environment::Production, null, $anchor))->toThrow(\InvalidArgumentException::class);
+    expect(fn () => new Verifier(testAppId(), Environment::Production, CategoryPolicy::any(), $anchor))->toThrow(\InvalidArgumentException::class);
 })->with([
     'empty' => [''],
     'file path' => ['file://'.__DIR__.'/../../resources/apple-app-attestation-root-ca.pem'],
@@ -95,7 +105,7 @@ it('names Apple\'s validation categories', function (): void {
 it('leaves no PHP error behind when OpenSSL refuses input', function (): void {
     error_clear_last();
 
-    expect(fn () => new Verifier(testAppId(), Environment::Production, null, "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"))
+    expect(fn () => new Verifier(testAppId(), Environment::Production, CategoryPolicy::any(), "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"))
         ->toThrow(\InvalidArgumentException::class)
         ->and(error_get_last())->toBeNull();
 });
@@ -103,21 +113,22 @@ it('leaves no PHP error behind when OpenSSL refuses input', function (): void {
 it('refuses a trust anchor that is not a CA, cannot sign certificates, or has a malformed time', function (\Closure $anchor): void {
     $pem = $anchor();
 
-    expect(fn () => new Verifier(testAppId(), Environment::Production, null, is_string($pem) ? $pem : ''))->toThrow(\InvalidArgumentException::class);
+    expect(fn () => new Verifier(testAppId(), Environment::Production, CategoryPolicy::any(), is_string($pem) ? $pem : ''))->toThrow(\InvalidArgumentException::class);
 })->with([
     'CA:FALSE with keyCertSign' => [fn () => TestAuthority::create(rootExtensions: "basicConstraints = critical,CA:FALSE\nkeyUsage = critical,keyCertSign")->rootPem],
     'CA:TRUE with cRLSign only' => [fn () => TestAuthority::create(rootExtensions: "basicConstraints = critical,CA:TRUE\nkeyUsage = critical,cRLSign")->rootPem],
     'a time that DER refuses' => [function (): string {
         $der = TestAuthority::shared()->rootDer;
-        $at = strpos($der, "\x17\x0D");
-        $der[(int) $at + 14] = '0';
+        // The first UTCTime: tag, length 13, twelve digits, and Z (a random serial number cannot match all 15 bytes).
+        preg_match('/\x17\x0D\d{12}Z/', $der, $match, PREG_OFFSET_CAPTURE);
+        $der[(int) ($match[0][1] ?? 0) + 14] = '0';
 
         return "-----BEGIN CERTIFICATE-----\n".chunk_split(base64_encode($der), 64, "\n")."-----END CERTIFICATE-----\n";
     }],
 ]);
 
 it('leaves OpenSSL\'s error queue empty after a refused trust anchor', function (): void {
-    expect(fn () => new Verifier(testAppId(), Environment::Production, null, "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"))
+    expect(fn () => new Verifier(testAppId(), Environment::Production, CategoryPolicy::any(), "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"))
         ->toThrow(\InvalidArgumentException::class)
         ->and(openssl_error_string())->toBeFalse();
 });

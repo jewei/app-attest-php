@@ -18,13 +18,11 @@
         "ext-openssl": "*"
     },
     "require-dev": {
+        "brianium/paratest": "<7.26.1",
         "laravel/pint": "^1.32",
         "nikic/php-parser": "^5.6",
         "pestphp/pest": "^4.3.2 || ^5.3",
         "phpstan/phpstan": "^2.3"
-    },
-    "conflict": {
-        "brianium/paratest": "7.26.1"
     },
     "autoload": {
         "psr-4": {
@@ -43,7 +41,7 @@
             "@test:unit"
         ],
         "test:unit": "@php vendor/bin/pest",
-        "test:mutation": "@php vendor/bin/pest --mutate --parallel --class=\"AppAttest\\Verifier,AppAttest\\AppId,AppAttest\\Internal\\Cbor,AppAttest\\Internal\\CborMap,AppAttest\\Internal\\Der,AppAttest\\Internal\\AuthenticatorData,AppAttest\\Internal\\CertificateChain,AppAttest\\Internal\\OpenSsl\"",
+        "test:mutation": "@php vendor/bin/pest --mutate --parallel --min=90 --class=\"AppAttest\\Verifier,AppAttest\\AppId,AppAttest\\CategoryPolicy,AppAttest\\Internal\\Cbor,AppAttest\\Internal\\CborMap,AppAttest\\Internal\\Der,AppAttest\\Internal\\AuthenticatorData,AppAttest\\Internal\\CertificateChain,AppAttest\\Internal\\OpenSsl,AppAttest\\Testing\\TestAuthority,AppAttest\\Testing\\TestDevice\"",
         "test:architecture": "@php tests/Tooling/check-architecture.php",
         "test:types": [
             "@php vendor/bin/phpstan analyse --no-progress",

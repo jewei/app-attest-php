@@ -55,14 +55,9 @@ final readonly class Verifier
 
     private TrustAnchor $trustAnchor;
 
-    /** @var list<ValidationCategory>|null */
-    private ?array $allowedCategories;
-
     /**
-     * @param  list<ValidationCategory>|null  $allowedCategories  Required. The categories to accept; a list also
-     *                                                            refuses a missing category. For production, list them (for example
-     *                                                            AppStore and TestFlight). Null accepts every category that
-     *                                                            ValidationCategory names, including Development, and a missing one.
+     * @param  CategoryPolicy  $categories  Which validation categories to accept, for example
+     *                                      CategoryPolicy::only(ValidationCategory::AppStore, ValidationCategory::TestFlight).
      * @param  string|null  $trustAnchor  A PEM root certificate, for tests with your own test CA. Null uses the
      *                                    pinned Apple App Attestation Root CA. Never set it in production.
      *
@@ -72,14 +67,13 @@ final readonly class Verifier
     public function __construct(
         private AppId $appId,
         private Environment $environment,
-        ?array $allowedCategories,
+        private CategoryPolicy $categories,
         ?string $trustAnchor = null,
     ) {
         if (PHP_INT_SIZE < 8) {
             throw new RuntimeException('App Attest verification needs a 64-bit PHP build.');
         }
 
-        $this->allowedCategories = $allowedCategories === null ? null : self::categoryList($allowedCategories);
         $this->trustAnchor = CertificateChain::anchor($trustAnchor ?? self::appleRoot());
     }
 
@@ -250,31 +244,6 @@ final readonly class Verifier
         return new VerifiedAssertion($data->counter, $this->category($data->validationCategory), $data->bundleVersion);
     }
 
-    /**
-     * PHP does not enforce the PHPDoc type at runtime, so the list is checked here.
-     *
-     * @param  array<mixed>  $categories
-     * @return list<ValidationCategory>
-     */
-    private static function categoryList(array $categories): array
-    {
-        if ($categories === [] || ! array_is_list($categories)) {
-            throw new InvalidArgumentException('The allowed categories must be a non-empty list.');
-        }
-
-        $list = [];
-
-        foreach ($categories as $category) {
-            if (! $category instanceof ValidationCategory) {
-                throw new InvalidArgumentException('Each allowed category must be a ValidationCategory.');
-            }
-
-            $list[] = $category;
-        }
-
-        return $list;
-    }
-
     private static function appleRoot(): string
     {
         $path = dirname(__DIR__).'/resources/apple-app-attestation-root-ca.pem';
@@ -315,8 +284,9 @@ final readonly class Verifier
             throw self::fail(Failure::InvalidCertificate, 'The credential certificate does not have an EC P-256 key.');
         }
 
-        // A credential certificate always has a key; the checks guard against an OpenSSL build that cannot
-        // read it. OpenSSL returns the coordinates without leading zero bytes.
+        // CertificateChain already refused a key that is not EC P-256 (from the DER), so these checks repeat it
+        // for an OpenSSL build that reads the key differently. OpenSSL returns the coordinates without leading
+        // zero bytes.
         $point = "\x04".str_pad($details['ec']['x'], 32, "\0", STR_PAD_LEFT).str_pad($details['ec']['y'], 32, "\0", STR_PAD_LEFT);
 
         return [$point, $details['key']];
@@ -379,18 +349,13 @@ final readonly class Verifier
 
     private function category(?int $value): ?ValidationCategory
     {
-        if ($value === null) {
-            if ($this->allowedCategories !== null) {
-                throw self::fail(Failure::CategoryNotAllowed, 'The authenticator data has no validation category.');
-            }
+        $category = $value === null ? null : ValidationCategory::tryFrom($value);
 
-            return null;
-        }
-
-        $category = ValidationCategory::tryFrom($value);
-
-        if ($category === null || ($this->allowedCategories !== null && ! in_array($category, $this->allowedCategories, true))) {
-            throw self::fail(Failure::CategoryNotAllowed, "The validation category {$value} is not allowed.");
+        // A value that ValidationCategory does not name is refused by every policy.
+        if (($value !== null && $category === null) || ! $this->categories->allows($category)) {
+            throw self::fail(Failure::CategoryNotAllowed, $value === null
+                ? 'The authenticator data has no validation category.'
+                : "The validation category {$value} is not allowed.");
         }
 
         return $category;

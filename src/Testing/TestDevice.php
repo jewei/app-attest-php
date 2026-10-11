@@ -8,6 +8,7 @@ use AppAttest\AppId;
 use AppAttest\Environment;
 use AppAttest\Internal\CborEncoder;
 use AppAttest\ValidationCategory;
+use Closure;
 use OpenSSLAsymmetricKey;
 use RuntimeException;
 
@@ -27,8 +28,9 @@ final class TestDevice
     private readonly string $point;
 
     /** @internal Created by TestAuthority::device(). */
+    /** @param Closure(OpenSSLAsymmetricKey, string, string): array{string, string} $issue Issues the credential certificate. */
     public function __construct(
-        private readonly TestAuthority $authority,
+        private readonly Closure $issue,
         private readonly OpenSSLAsymmetricKey $key,
         private readonly AppId $appId,
         private readonly Environment $environment,
@@ -49,7 +51,7 @@ final class TestDevice
             .pack('n', 32).$this->keyId
             .CborEncoder::map([1 => 2, 3 => -7, -1 => 1, -2 => CborEncoder::bytes(substr($this->point, 1, 32)), -3 => CborEncoder::bytes(substr($this->point, 33, 32))])
             .$this->extensions();
-        [$credential, $intermediate] = $this->authority->issue($this->key, $this->keyId, hash('sha256', $authData.$clientDataHash, true));
+        [$credential, $intermediate] = ($this->issue)($this->key, $this->keyId, hash('sha256', $authData.$clientDataHash, true));
 
         return CborEncoder::map([
             'fmt' => CborEncoder::text('apple-appattest'),

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AppAttest\AppId;
+use AppAttest\CategoryPolicy;
 use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\Exception\VerificationException;
@@ -329,24 +330,29 @@ it('refuses the certificates in the wrong order', function (): void {
     expect(attestationFailure(['mutate' => $mutate]))->toBe(Failure::InvalidCertificate);
 });
 
-it('applies the validation category policy', function (mixed $category, ?array $allowed, ?Failure $failure): void {
+it('applies the validation category policy', function (mixed $category, \Closure $policy, ?Failure $failure): void {
     $extensions = $category === 'absent' ? null : ['apple_validation_category_01' => $category];
+    $categories = $policy();
 
-    expect(attestationFailure(['extensions' => $extensions], testVerifier(categories: $allowed)))->toBe($failure);
+    expect(attestationFailure(['extensions' => $extensions], testVerifier(categories: $categories instanceof CategoryPolicy ? $categories : null)))->toBe($failure);
 })->with([
-    'TestFlight, any' => [new Bytes("\x02\0\0\0"), null, null],
-    'TestFlight, allowed' => [new Bytes("\x02\0\0\0"), [ValidationCategory::TestFlight], null],
-    'TestFlight, App Store only' => [new Bytes("\x02\0\0\0"), [ValidationCategory::AppStore], Failure::CategoryNotAllowed],
-    'invalid 0' => [new Bytes("\0\0\0\0"), null, Failure::CategoryNotAllowed],
-    'restricted 7' => [new Bytes("\x07\0\0\0"), null, Failure::CategoryNotAllowed],
-    'restricted 9' => [new Bytes("\x09\0\0\0"), null, Failure::CategoryNotAllowed],
-    'unknown 11' => [new Bytes("\x0B\0\0\0"), null, Failure::CategoryNotAllowed],
-    'big-endian 2' => [new Bytes("\0\0\0\x02"), null, Failure::CategoryNotAllowed],
-    'integer 4' => [4, [ValidationCategory::AppStore], null],
-    'integer 0' => [0, null, Failure::CategoryNotAllowed],
-    'integer 2^32 - 1' => [0xFFFFFFFF, null, Failure::CategoryNotAllowed],
-    'absent, any' => ['absent', null, null],
-    'absent, list' => ['absent', [ValidationCategory::TestFlight], Failure::CategoryNotAllowed],
+    'TestFlight, any' => [new Bytes("\x02\0\0\0"), fn () => CategoryPolicy::any(), null],
+    'TestFlight, allowed' => [new Bytes("\x02\0\0\0"), fn () => CategoryPolicy::only(ValidationCategory::TestFlight), null],
+    'TestFlight, App Store only' => [new Bytes("\x02\0\0\0"), fn () => CategoryPolicy::only(ValidationCategory::AppStore), Failure::CategoryNotAllowed],
+    'TestFlight, App Store or missing' => [new Bytes("\x02\0\0\0"), fn () => CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore), Failure::CategoryNotAllowed],
+    'second of two allowed' => [new Bytes("\x04\0\0\0"), fn () => CategoryPolicy::only(ValidationCategory::TestFlight, ValidationCategory::AppStore), null],
+    'invalid 0' => [new Bytes("\0\0\0\0"), fn () => CategoryPolicy::any(), Failure::CategoryNotAllowed],
+    'restricted 7' => [new Bytes("\x07\0\0\0"), fn () => CategoryPolicy::any(), Failure::CategoryNotAllowed],
+    'restricted 9' => [new Bytes("\x09\0\0\0"), fn () => CategoryPolicy::any(), Failure::CategoryNotAllowed],
+    'unknown 11' => [new Bytes("\x0B\0\0\0"), fn () => CategoryPolicy::any(), Failure::CategoryNotAllowed],
+    'unknown 11, missing allowed' => [new Bytes("\x0B\0\0\0"), fn () => CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore), Failure::CategoryNotAllowed],
+    'big-endian 2' => [new Bytes("\0\0\0\x02"), fn () => CategoryPolicy::any(), Failure::CategoryNotAllowed],
+    'integer 4' => [4, fn () => CategoryPolicy::only(ValidationCategory::AppStore), null],
+    'integer 0' => [0, fn () => CategoryPolicy::any(), Failure::CategoryNotAllowed],
+    'integer 2^32 - 1' => [0xFFFFFFFF, fn () => CategoryPolicy::any(), Failure::CategoryNotAllowed],
+    'absent, any' => ['absent', fn () => CategoryPolicy::any(), null],
+    'absent, only' => ['absent', fn () => CategoryPolicy::only(ValidationCategory::TestFlight), Failure::CategoryNotAllowed],
+    'absent, only or missing' => ['absent', fn () => CategoryPolicy::onlyOrMissing(ValidationCategory::TestFlight), null],
 ]);
 
 it('returns the category and bundle version from the extensions', function (): void {
@@ -508,4 +514,18 @@ it('refuses a key with Apple\'s macOS access-control blob, even without a platfo
         ->toBe(Failure::UnsupportedPlatform)
         ->and(attestationFailure(['credentialExtensions' => "basicConstraints = critical,CA:FALSE\n".TestAuthority::aclExtension('an iOS policy')]))
         ->toBeNull();
+});
+
+it('refuses an intermediate with the anchor\'s key under another name', function (): void {
+    $intermediate = TestAuthority::shared()->customIntermediate('Another App Attestation CA', anchorKey: true);
+    $control = TestAuthority::shared()->customIntermediate('Another App Attestation CA', anchorKey: false);
+
+    expect(attestationFailure(['intermediate' => $intermediate]))->toBe(Failure::InvalidCertificate)
+        ->and(attestationFailure(['intermediate' => $control]))->toBeNull();
+});
+
+it('refuses a self-issued intermediate that the credential certificate names', function (): void {
+    $intermediate = TestAuthority::shared()->customIntermediate('Test App Attestation Root CA', anchorKey: false);
+
+    expect(attestationFailure(['intermediate' => $intermediate]))->toBe(Failure::InvalidCertificate);
 });

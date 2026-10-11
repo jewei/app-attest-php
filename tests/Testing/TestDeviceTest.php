@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AppAttest\AppId;
+use AppAttest\CategoryPolicy;
 use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\Testing\TestAuthority;
@@ -13,7 +14,7 @@ it('attests a key and signs assertions that the verifier accepts', function (Env
     $authority = TestAuthority::create();
     $appId = new AppId('ABCDE12345', 'com.example.app');
     $device = $authority->device($appId, $environment, $category);
-    $verifier = new Verifier($appId, $environment, null, $authority->rootPem());
+    $verifier = new Verifier($appId, $environment, CategoryPolicy::any(), $authority->rootPem());
     $challenge = random_bytes(32);
 
     $key = $verifier->verifyAttestation($device->attest(hash('sha256', $challenge, true)), $device->keyId, hash('sha256', $challenge, true));
@@ -37,7 +38,7 @@ it('is refused by a verifier that trusts Apple\'s root', function (): void {
     $device = TestAuthority::create()->device($appId);
     $attestation = $device->attest(hash('sha256', 'challenge', true));
 
-    expect(failureOf(fn () => (new Verifier($appId, Environment::Production, null))->verifyAttestation($attestation, $device->keyId, hash('sha256', 'challenge', true))))
+    expect(failureOf(fn () => (new Verifier($appId, Environment::Production, CategoryPolicy::any()))->verifyAttestation($attestation, $device->keyId, hash('sha256', 'challenge', true))))
         ->toBe(Failure::InvalidCertificate);
 });
 
@@ -45,7 +46,7 @@ it('refuses a replayed assertion because the counter does not increase', functio
     $authority = TestAuthority::create();
     $appId = new AppId('ABCDE12345', 'com.example.app');
     $device = $authority->device($appId);
-    $verifier = new Verifier($appId, Environment::Production, null, $authority->rootPem());
+    $verifier = new Verifier($appId, Environment::Production, CategoryPolicy::any(), $authority->rootPem());
     $key = $verifier->verifyAttestation($device->attest(hash('sha256', 'c', true)), $device->keyId, hash('sha256', 'c', true));
     $assertion = $device->assert('GET /me');
     $counter = $verifier->verifyAssertion($assertion, 'GET /me', $key->publicKey, 0, Environment::Production)->counter;
@@ -59,6 +60,4 @@ it('refuses test inputs that the verifier could not read', function (\Closure $c
 })->with([
     'a bundle version that is not UTF-8' => [fn () => TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'), bundleVersion: "\xFF\xFE")],
     'an empty bundle version' => [fn () => TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'), bundleVersion: '')],
-    'a 33-byte key ID' => [fn () => TestAuthority::create()->issue(openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']) ?: throw new \RuntimeException, str_repeat('k', 33), str_repeat('n', 32))],
-    'a 31-byte nonce' => [fn () => TestAuthority::create()->issue(openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']) ?: throw new \RuntimeException, str_repeat('k', 32), str_repeat('n', 31))],
 ]);

@@ -62,26 +62,7 @@ final readonly class TestAuthority
             throw new InvalidArgumentException('The bundle version must be 1 to 255 bytes of UTF-8.');
         }
 
-        return new TestDevice($this, self::key('prime256v1'), $appId, $environment, $category, $bundleVersion);
-    }
-
-    /**
-     * @internal Issues a credential certificate for $key with the nonce extension, as DER, followed by the intermediate DER.
-     *
-     * @return array{string, string}
-     */
-    public function issue(OpenSSLAsymmetricKey $key, string $keyId, string $nonce): array
-    {
-        if (strlen($keyId) !== 32 || strlen($nonce) !== 32) {
-            throw new InvalidArgumentException('The key ID and the nonce must be 32 bytes.');
-        }
-
-        $extension = "\x30\x24\xA1\x22\x04\x20".$nonce;
-        $lines = "basicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature\n"
-            .'1.2.840.113635.100.8.2 = DER:'.implode(':', str_split(bin2hex($extension), 2));
-        $credential = self::sign(['commonName' => bin2hex($keyId)], $key, $this->intermediate, $this->intermediateKey, $lines, 3, 'sha256');
-
-        return [self::der($credential), $this->intermediateDer];
+        return new TestDevice($this->issue(...), self::key('prime256v1'), $appId, $environment, $category, $bundleVersion);
     }
 
     private static function key(string $curve): OpenSSLAsymmetricKey
@@ -135,5 +116,24 @@ final readonly class TestAuthority
         $der = base64_decode((string) preg_replace('/-----[^-]+-----|\s/', '', self::pem($certificate)), true);
 
         return $der !== false ? $der : throw new RuntimeException('The test certificate is not Base64.');
+    }
+
+    /**
+     * Issues a credential certificate for $key with the nonce extension, as DER, followed by the intermediate DER.
+     *
+     * @return array{string, string}
+     */
+    private function issue(OpenSSLAsymmetricKey $key, string $keyId, string $nonce): array
+    {
+        if (strlen($keyId) !== 32 || strlen($nonce) !== 32) {
+            throw new InvalidArgumentException('The key ID and the nonce must be 32 bytes.');
+        }
+
+        $extension = "\x30\x24\xA1\x22\x04\x20".$nonce;
+        $lines = "basicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature\n"
+            .'1.2.840.113635.100.8.2 = DER:'.implode(':', str_split(bin2hex($extension), 2));
+        $credential = self::sign(['commonName' => bin2hex($keyId)], $key, $this->intermediate, $this->intermediateKey, $lines, 3, 'sha256');
+
+        return [self::der($credential), $this->intermediateDer];
     }
 }

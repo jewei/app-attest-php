@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AppAttest\AppId;
+use AppAttest\CategoryPolicy;
 use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\Tests\Support\AssertionObject;
@@ -90,9 +91,9 @@ it('refuses another App ID', function (): void {
 });
 
 it('applies the validation category policy', function (): void {
-    expect(assertionFailure(verifier: testVerifier(categories: [ValidationCategory::AppStore])))->toBe(Failure::CategoryNotAllowed)
-        ->and(assertionFailure(verifier: testVerifier(categories: [ValidationCategory::TestFlight])))->toBeNull()
-        ->and(assertionFailure(options: ['extensions' => null], verifier: testVerifier(categories: [ValidationCategory::TestFlight])))->toBe(Failure::CategoryNotAllowed)
+    expect(assertionFailure(verifier: testVerifier(categories: CategoryPolicy::only(ValidationCategory::AppStore))))->toBe(Failure::CategoryNotAllowed)
+        ->and(assertionFailure(verifier: testVerifier(categories: CategoryPolicy::only(ValidationCategory::TestFlight))))->toBeNull()
+        ->and(assertionFailure(options: ['extensions' => null], verifier: testVerifier(categories: CategoryPolicy::only(ValidationCategory::TestFlight))))->toBe(Failure::CategoryNotAllowed)
         ->and(assertionFailure(options: ['extensions' => ['apple_validation_category_01' => new Bytes("\x08\0\0\0")]]))->toBe(Failure::CategoryNotAllowed);
 });
 
@@ -220,7 +221,13 @@ it('reads assertion extensions only with the ED flag', function (string $flags, 
     'ED only' => ["\x80", null],
     'AT only' => ["\x40", Failure::MalformedInput],
     'no flags' => ["\x00", Failure::MalformedInput],
+    'UP only' => ["\x01", Failure::MalformedInput],
 ]);
+
+it('refuses one trailing byte without the ED flag', function (): void {
+    expect(assertionFailure(options: ['flags' => "\x40", 'extensions' => "\x00"]))->toBe(Failure::MalformedInput)
+        ->and(assertionFailure(options: ['flags' => "\x40", 'extensions' => null]))->toBeNull();
+});
 
 it('refuses extensions moved from the client data hash into the authenticator data', function (): void {
     // A modified app signs SHA256(authData || X || SHA256(clientData)) and sends authData || X: the signature
@@ -232,7 +239,7 @@ it('refuses extensions moved from the client data hash into the authenticator da
     openssl_sign($nonce, $signature, $key['key'], OPENSSL_ALGO_SHA256);
     $assertion = CborEncoder::encode(['signature' => new Bytes(is_string($signature) ? $signature : ''), 'authenticatorData' => new Bytes($authenticatorData.$forged)]);
 
-    expect(failureOf(fn () => testVerifier(categories: [ValidationCategory::AppStore])->verifyAssertion($assertion, 'GET /me', $key['publicKey'], 0, Environment::Production)))
+    expect(failureOf(fn () => testVerifier(categories: CategoryPolicy::only(ValidationCategory::AppStore))->verifyAssertion($assertion, 'GET /me', $key['publicKey'], 0, Environment::Production)))
         ->toBe(Failure::MalformedInput);
 });
 

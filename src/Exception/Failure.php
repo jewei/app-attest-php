@@ -7,16 +7,20 @@ namespace AppAttest\Exception;
 /** The check that refused an attestation or an assertion. The values are stable, for logs. */
 enum Failure: string
 {
-    /** The input is too large, truncated, or not the CBOR structure that Apple defines. */
+    /**
+     * The input is empty, too large, truncated, or not the CBOR structure that Apple defines; the key ID is not
+     * 32 bytes; or an assertion has bytes after its counter without the ED flag.
+     */
     case MalformedInput = 'malformed_input';
     /** The attestation format is not `apple-appattest`. */
     case UnsupportedFormat = 'unsupported_format';
     /** The credential certificate names a platform other than iPhone and iPad (`iphoneos`), such as macOS. */
     case UnsupportedPlatform = 'unsupported_platform';
     /**
-     * A certificate is malformed; the chain does not lead to the trust anchor; a certificate is not valid at
-     * the check time; a CA flag, key usage, or critical extension is wrong; the nonce extension is missing or
-     * malformed; or the credential key is not EC P-256.
+     * A certificate is malformed or not strict DER; the chain does not lead to the trust anchor; the intermediate
+     * has the anchor's key or is self-issued; a certificate is not valid at the check time; a CA flag, key usage,
+     * or critical extension is wrong; a key is on another curve; or the nonce or platform extension is missing
+     * or malformed.
      */
     case InvalidCertificate = 'invalid_certificate';
     /** The credential certificate's nonce is not SHA-256(authData || clientDataHash). */

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AppAttest\AppId;
+use AppAttest\CategoryPolicy;
 use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\ValidationCategory;
@@ -48,9 +49,9 @@ it('refuses the sample for each wrong input', function (string $case, Failure $f
     match ($case) {
         'challenge' => $clientDataHash = hash('sha256', $clientDataHash, true),
         'key ID' => $keyId[0] = chr(ord($keyId[0]) ^ 1),
-        'App ID' => $verifier = new Verifier(new AppId('1234567890', 'com.example.other'), Environment::Production, null),
-        'environment' => $verifier = new Verifier(new AppId('1234567890', 'com.example.myapp'), Environment::Development, null),
-        'category' => $verifier = new Verifier(new AppId('1234567890', 'com.example.myapp'), Environment::Production, [ValidationCategory::AppStore]),
+        'App ID' => $verifier = new Verifier(new AppId('1234567890', 'com.example.other'), Environment::Production, CategoryPolicy::any()),
+        'environment' => $verifier = new Verifier(new AppId('1234567890', 'com.example.myapp'), Environment::Development, CategoryPolicy::any()),
+        'category' => $verifier = new Verifier(new AppId('1234567890', 'com.example.myapp'), Environment::Production, CategoryPolicy::only(ValidationCategory::AppStore)),
         default => throw new \LogicException($case),
     };
 

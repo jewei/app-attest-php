@@ -133,6 +133,21 @@ final class TestAuthority
         return $details['key'];
     }
 
+    /**
+     * An intermediate signed by the root with its own name, and the anchor's key or a new one, for chains that
+     * only one check can refuse. Pass it to attest() as the intermediate option.
+     *
+     * @return array{certificate: OpenSSLCertificate, key: OpenSSLAsymmetricKey, der: string}
+     */
+    public function customIntermediate(string $commonName, bool $anchorKey): array
+    {
+        $key = $anchorKey ? $this->rootKey : self::key('secp384r1');
+        $certificate = self::sign(['commonName' => $commonName, 'organizationName' => 'Test'], $key, $this->root, $this->rootKey,
+            "basicConstraints = critical,CA:TRUE,pathlen:0\nkeyUsage = critical,keyCertSign,cRLSign", 3650, 'sha384');
+
+        return ['certificate' => $certificate, 'key' => $key, 'der' => self::der($certificate)];
+    }
+
     /** A copy of the root: the same key and name under a new serial number, so its DER differs (DER). */
     public function rootCopy(): string
     {
@@ -195,12 +210,15 @@ final class TestAuthority
             $lines .= "\n1.2.840.113635.100.8.2 = DER:".self::hexColons("\x30".chr(strlen($tagged)).$tagged);
         }
 
-        [$issuer, $issuerKey] = Options::string($options, 'issuer', 'intermediate') === 'root'
-            ? [$this->root, $this->rootKey]
-            : [$this->intermediate, $this->intermediateKey];
+        $custom = $options['intermediate'] ?? null;
+        [$issuer, $issuerKey, $intermediateDer] = match (true) {
+            is_array($custom) && $custom['certificate'] instanceof OpenSSLCertificate && $custom['key'] instanceof OpenSSLAsymmetricKey && is_string($custom['der']) => [$custom['certificate'], $custom['key'], $custom['der']],
+            Options::string($options, 'issuer', 'intermediate') === 'root' => [$this->root, $this->rootKey, $this->intermediateDer],
+            default => [$this->intermediate, $this->intermediateKey, $this->intermediateDer],
+        };
         $credential = self::der(self::sign(['commonName' => bin2hex($keyId)], $key, $issuer, $issuerKey, $lines, Options::int($options, 'credentialDays', 3), 'sha256'));
 
-        $object = new AttestationObject('apple-appattest', [new Bytes($credential), new Bytes($this->intermediateDer)], new Bytes(Options::string($options, 'receipt', 'test receipt')), new Bytes($authData));
+        $object = new AttestationObject('apple-appattest', [new Bytes($credential), new Bytes($intermediateDer)], new Bytes(Options::string($options, 'receipt', 'test receipt')), new Bytes($authData));
         Options::closure($options, 'mutate')?->__invoke($object);
 
         return [

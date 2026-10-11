@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AppAttest\AppId;
+use AppAttest\CategoryPolicy;
 use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\ValidationCategory;
@@ -34,7 +35,7 @@ function realAssertion(): array
 
 it('verifies a real iOS 27 assertion with Apple\'s extensions', function (): void {
     $fixture = realAssertion();
-    $verifier = new Verifier($fixture['appId'], Environment::Production, [ValidationCategory::TestFlight]);
+    $verifier = new Verifier($fixture['appId'], Environment::Production, CategoryPolicy::only(ValidationCategory::TestFlight));
     $verified = $verifier->verifyAssertion($fixture['assertion'], $fixture['clientData'], $fixture['publicKey'], $fixture['previous'], Environment::Production);
 
     expect($verified->counter)->toBe($fixture['counter'])
@@ -44,15 +45,15 @@ it('verifies a real iOS 27 assertion with Apple\'s extensions', function (): voi
 
 it('refuses the real assertion when anything differs', function (string $case, Failure $failure): void {
     $fixture = realAssertion();
-    $verifier = new Verifier($fixture['appId'], Environment::Production, null);
+    $verifier = new Verifier($fixture['appId'], Environment::Production, CategoryPolicy::any());
     $clientData = $fixture['clientData'];
     $previous = $fixture['previous'];
 
     match ($case) {
         'replayed' => $previous = $fixture['counter'],
         'client data' => $clientData .= ' ',
-        'App ID' => $verifier = new Verifier(new AppId('6PU678XRWJ', 'com.example.other'), Environment::Production, null),
-        'App Store only' => $verifier = new Verifier($fixture['appId'], Environment::Production, [ValidationCategory::AppStore]),
+        'App ID' => $verifier = new Verifier(new AppId('6PU678XRWJ', 'com.example.other'), Environment::Production, CategoryPolicy::any()),
+        'App Store only' => $verifier = new Verifier($fixture['appId'], Environment::Production, CategoryPolicy::only(ValidationCategory::AppStore)),
         default => throw new \LogicException($case),
     };
 

@@ -138,7 +138,7 @@ it('refuses malformed certificates and extension lists', function (string $certi
     'only an OID' => [certificateWith([tlv(0x30, tlv(0x06, "\x2A\x03"))])],
     'algorithm not a SEQUENCE' => [tlv(0x30, tlv(0x30, "\xA0\x03\x02\x01\x02")."\x05\x00\x03\x01\x00")],
     'list not a SEQUENCE' => [certificateWith(afterKey: tlv(0xA3, tlv(0x31, '')))],
-    'two lists in the wrapper' => [certificateWith(afterKey: tlv(0xA3, tlv(0x30, '').tlv(0x30, '')))],
+    'two lists in the wrapper' => [certificateWith(afterKey: tlv(0xA3, tlv(0x30, extension("\x2A\x03", 'a')).tlv(0x30, extension("\x2A\x04", 'b'))))],
     'extension not a SEQUENCE' => [certificateWith([tlv(0x31, tlv(0x06, "\x2A\x03").tlv(0x04, 'a'))])],
     'value not an OCTET STRING' => [certificateWith([tlv(0x30, tlv(0x06, "\x2A\x03").tlv(0x03, "\x00a"))])],
     'no OID' => [certificateWith([tlv(0x30, tlv(0x04, 'a'))])],
@@ -336,10 +336,31 @@ it('refuses a platform extension of another shape', function (string $value): vo
     'a small tag number in the long form' => ['3013bf05020400bf88020a04086970686f6e656f73'],
     'a universal field' => ['30050403020100'],
     'the platform field as a primitive' => ['300c9f88020804066d61636f7378'],
-    'a five-byte tag number' => ['3010bf8080808002080406697068006f6e65'],
+    'a five-byte tag number' => ['3007bf818181810200'],
     'a truncated tag number' => ['3002bf88'],
     'a truncated length' => ['3003bf8802'],
     'the platform twice' => ['3018bf88020804066d61636f7378bf88020804066d61636f7378'],
     'the platform not an OCTET STRING' => ['300cbf88020802066d61636f7378'],
     'trailing bytes in the platform' => ['300ebf88020a04066d61636f73780000'],
+]);
+
+it('reads tag numbers from 31 in the long form, up to four bytes', function (string $value, ?string $platform): void {
+    expect(Der::platform((string) hex2bin($value)))->toBe($platform);
+})->with([
+    'number 31' => ['3012bf1f0102bf88020a04086970686f6e656f73', 'iphoneos'],
+    'a four-byte number' => ['3016bf81818101020400bf88020a04086970686f6e656f73', 'iphoneos'],
+    'number 1026 as 2 bytes' => ['300ebf88020a04086970686f6e656f73', 'iphoneos'],
+]);
+
+it('refuses a long-form tag number below 31', function (): void {
+    expect(failureOf(fn () => Der::platform((string) hex2bin('3012bf1e0102bf88020a04086970686f6e656f73'))))->toBe(Failure::InvalidCertificate);
+});
+
+it('refuses a public key algorithm that is not an OID and a named curve', function (string $algorithm): void {
+    expect(Der::certificate(certificateWith(publicKey: tlv(0x30, tlv(0x30, $algorithm).tlv(0x03, "\x00\x04"))))['curve'])->toBeNull();
+})->with([
+    'only the algorithm' => [tlv(0x06, Der::EC_PUBLIC_KEY)],
+    'curve as a SEQUENCE' => [tlv(0x06, Der::EC_PUBLIC_KEY).tlv(0x30, '')],
+    'algorithm as a NULL' => [tlv(0x05, '').tlv(0x06, Der::P256)],
+    'three parts' => [tlv(0x06, Der::EC_PUBLIC_KEY).tlv(0x06, Der::P256).tlv(0x05, '')],
 ]);

@@ -14,6 +14,7 @@ composer require jewei/app-attest-php
 
 ```php
 use AppAttest\AppId;
+use AppAttest\CategoryPolicy;
 use AppAttest\Environment;
 use AppAttest\ValidationCategory;
 use AppAttest\Verifier;
@@ -21,11 +22,11 @@ use AppAttest\Verifier;
 $verifier = new Verifier(
     new AppId('ABCDE12345', 'com.example.app'), // App ID prefix (team ID) and bundle ID
     Environment::Production,                     // from your server configuration
-    allowedCategories: [ValidationCategory::AppStore, ValidationCategory::TestFlight],
+    CategoryPolicy::only(ValidationCategory::AppStore, ValidationCategory::TestFlight),
 );
 ```
 
-`allowedCategories` is required: list the [validation categories](#validation-categories) that you accept, or pass `null` to accept every named category.
+The [category policy](#validation-categories) is required.
 
 ## Verify an attestation
 
@@ -112,12 +113,13 @@ The package checks the cryptography and the data. Your server must also:
 
 ## Validation categories
 
-Apple's current documentation adds `apple_validation_category_01` (how the app was distributed) and `apple_bundle_version_01` to the authenticator data. Apple's sample attestation and the real iOS 27 assertion in `spec/` have both; devices on older iOS versions may not write them. Both results expose them as `validationCategory` (a `ValidationCategory`, or null) and `bundleVersion` (a string, or null).
+Apple's current documentation adds `apple_validation_category_01` (how the app was distributed) and `apple_bundle_version_01` to the authenticator data. (Its assertion steps call them `validationCategory` and `bundleVersion`; the real assertion in `spec/` uses the `_01` keys, so the package reads those.) Apple's sample attestation and the real iOS 27 assertion in `spec/` have both; devices on older iOS versions may not write them. Both results expose them as `validationCategory` (a `ValidationCategory`, or null) and `bundleVersion` (a string, or null).
 
 | Policy | Result |
 | --- | --- |
-| `allowedCategories: [...]` (recommended) | Accepts only the listed categories. A missing category fails, so devices that do not write it are refused. |
-| `allowedCategories: null` | Accepts every category that `ValidationCategory` names, including `Development` and `DeveloperId`, and a missing one. |
+| `CategoryPolicy::only(...)` | Only the listed categories. A missing category fails, so devices that do not write one are refused. |
+| `CategoryPolicy::onlyOrMissing(...)` | The listed categories, or none (devices on older iOS versions). |
+| `CategoryPolicy::any()` | Every category that `ValidationCategory` names, including `Development` and `DeveloperId`, and a missing one. |
 
 The verifier always refuses 0 (invalid), 7 to 9 (not appropriate for apps), and values that `ValidationCategory` does not name yet.
 
@@ -143,6 +145,8 @@ A failed check throws `AppAttest\Exception\VerificationException`. Its `failure`
 | `InvalidSignature` | `invalid_signature` |
 | `CounterNotIncreased` | `counter_not_increased` |
 
+New `Failure` and `ValidationCategory` cases can come in minor versions, so give a `match` on them a default arm. An upgrade that names a new category widens `CategoryPolicy::any()`.
+
 Do not show the failure or the message to the client. A wrong argument from your own server, such as a stored public key that is not an EC P-256 PEM, throws `InvalidArgumentException`.
 
 The package empties OpenSSL's error queue (`openssl_error_string()`) after its calls. OpenSSL cannot keep earlier entries, so read the queue before you call the verifier if you need it.
@@ -164,7 +168,7 @@ use AppAttest\Testing\TestAuthority;
 $appId = new AppId('ABCDE12345', 'com.example.app');
 $authority = TestAuthority::create();
 $device = $authority->device($appId, Environment::Production, ValidationCategory::TestFlight);
-$verifier = new Verifier($appId, Environment::Production, [ValidationCategory::TestFlight], $authority->rootPem());
+$verifier = new Verifier($appId, Environment::Production, CategoryPolicy::only(ValidationCategory::TestFlight), $authority->rootPem());
 
 $attestation = $device->attest(hash('sha256', $challenge, true)); // send with base64_encode($device->keyId)
 $assertion = $device->assert($clientData);                        // the counter increases with each call

@@ -12,8 +12,8 @@ use AppAttest\Exception\VerificationException;
  *
  * It accepts single-byte tags and minimal definite lengths of up to four bytes
  * only. It reads the fields that the chain check needs: the issuer and subject
- * names as DER bytes, the validity period, and the extensions. OpenSSL checks
- * the signatures.
+ * names as DER bytes, the validity period, the public key and its curve, and
+ * the extensions. OpenSSL checks the signatures.
  *
  * @phpstan-type Element array{tag: int, offset: int, start: int, end: int}
  * @phpstan-type Extension array{oid: string, critical: bool, value: string}
@@ -402,7 +402,7 @@ final class Der
 
             $oid = self::content($certificate, $fields[0]);
 
-            // The prefix keeps PHP from turning an OID such as "123" into an integer key.
+            // The prefix keeps every key a string; PHP would turn an OID such as "123" into an integer key.
             if (isset($seen['oid:'.$oid])) {
                 throw self::invalid('A certificate has the same extension twice.');
             }
