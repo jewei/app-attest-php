@@ -422,6 +422,13 @@ it('leaves OpenSSL\'s error queue empty', function (array $options): void {
 })->with([
     'valid' => [[]],
     'wrong issuer' => [['issuer' => 'root']],
+    'another authority\'s intermediate' => [['mutate' => static function (AttestationObject $object): void {
+        $object->x5c = [$object->x5c[0], new Bytes(TestAuthority::create()->intermediateDer)];
+    }]],
+    'a changed credential signature' => [['mutate' => static function (AttestationObject $object): void {
+        $certificate = $object->certificate(0);
+        $object->x5c = [new Bytes(substr($certificate, 0, -1).chr(ord($certificate[-1]) ^ 1)), $object->x5c[1]];
+    }]],
     'junk certificate' => [['mutate' => static function (AttestationObject $object): void {
         $object->x5c[0] = new Bytes("\x30\x03\x02\x01\x01");
     }]],
@@ -435,3 +442,50 @@ it('names the expected keys when the structure is wrong', function (): void {
     expect(fn () => testVerifier()->verifyAttestation($attestation['attestation'], $attestation['keyId'], testClientDataHash()))
         ->toThrow(VerificationException::class, 'The attestation object is not a map with exactly the keys fmt, attStmt, authData.');
 });
+
+it('refuses a key from a platform other than iPhone and iPad', function (string $platform, ?Failure $failure): void {
+    expect(attestationFailure(['credentialExtensions' => "basicConstraints = critical,CA:FALSE\n".TestAuthority::platformExtension($platform)]))->toBe($failure);
+})->with([
+    'iPhone and iPad' => ['iphoneos', null],
+    'macOS' => ['macosx', Failure::UnsupportedPlatform],
+    'another platform' => ['xros', Failure::UnsupportedPlatform],
+]);
+
+it('refuses the anchor\'s key under another certificate as the intermediate', function (): void {
+    $copy = TestAuthority::shared()->rootCopy();
+
+    expect($copy)->not->toBe(TestAuthority::shared()->rootDer)
+        ->and(attestationFailure(['issuer' => 'root', 'mutate' => static function (AttestationObject $object) use ($copy): void {
+            $object->x5c = [$object->x5c[0], new Bytes($copy)];
+        }]))->toBe(Failure::InvalidCertificate);
+});
+
+it('refuses a self-issued intermediate with its own key', function (): void {
+    $selfIssued = TestAuthority::shared()->intermediateWithSubject('Test App Attestation Root CA');
+
+    expect(attestationFailure(['mutate' => static function (AttestationObject $object) use ($selfIssued): void {
+        $object->x5c = [$object->x5c[0], new Bytes($selfIssued)];
+    }]))->toBe(Failure::InvalidCertificate);
+});
+
+it('refuses an intermediate issued under another name, even with the anchor\'s key', function (): void {
+    $other = TestAuthority::shared()->intermediateIssuedUnder('Another App Attestation Root CA');
+    $same = TestAuthority::shared()->intermediateIssuedUnder('Test App Attestation Root CA');
+    $with = static fn (string $intermediate): \Closure => static function (AttestationObject $object) use ($intermediate): void {
+        $object->x5c = [$object->x5c[0], new Bytes($intermediate)];
+    };
+
+    expect(attestationFailure(['mutate' => $with($other)]))->toBe(Failure::InvalidCertificate)
+        ->and(attestationFailure(['mutate' => $with($same)]))->toBeNull();
+});
+
+it('accepts a P-256 intermediate and refuses another curve', function (string $curve, ?Failure $failure): void {
+    $authority = TestAuthority::create(intermediateCurve: $curve);
+    $attestation = $authority->attest(testAppId(), testClientDataHash());
+
+    expect(failureOf(fn () => testVerifier(authority: $authority)->verifyAttestation($attestation['attestation'], $attestation['keyId'], testClientDataHash())))
+        ->toBe($failure);
+})->with([
+    'P-256' => ['prime256v1', null],
+    'P-521' => ['secp521r1', Failure::InvalidCertificate],
+]);

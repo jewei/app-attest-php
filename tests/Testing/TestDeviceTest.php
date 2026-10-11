@@ -13,7 +13,7 @@ it('attests a key and signs assertions that the verifier accepts', function (Env
     $authority = TestAuthority::create();
     $appId = new AppId('ABCDE12345', 'com.example.app');
     $device = $authority->device($appId, $environment, $category);
-    $verifier = new Verifier($appId, $environment, trustAnchor: $authority->rootPem());
+    $verifier = new Verifier($appId, $environment, null, $authority->rootPem());
     $challenge = random_bytes(32);
 
     $key = $verifier->verifyAttestation($device->attest(hash('sha256', $challenge, true)), $device->keyId, hash('sha256', $challenge, true));
@@ -37,7 +37,7 @@ it('is refused by a verifier that trusts Apple\'s root', function (): void {
     $device = TestAuthority::create()->device($appId);
     $attestation = $device->attest(hash('sha256', 'challenge', true));
 
-    expect(failureOf(fn () => (new Verifier($appId, Environment::Production))->verifyAttestation($attestation, $device->keyId, hash('sha256', 'challenge', true))))
+    expect(failureOf(fn () => (new Verifier($appId, Environment::Production, null))->verifyAttestation($attestation, $device->keyId, hash('sha256', 'challenge', true))))
         ->toBe(Failure::InvalidCertificate);
 });
 
@@ -45,7 +45,7 @@ it('refuses a replayed assertion because the counter does not increase', functio
     $authority = TestAuthority::create();
     $appId = new AppId('ABCDE12345', 'com.example.app');
     $device = $authority->device($appId);
-    $verifier = new Verifier($appId, Environment::Production, trustAnchor: $authority->rootPem());
+    $verifier = new Verifier($appId, Environment::Production, null, $authority->rootPem());
     $key = $verifier->verifyAttestation($device->attest(hash('sha256', 'c', true)), $device->keyId, hash('sha256', 'c', true));
     $assertion = $device->assert('GET /me');
     $counter = $verifier->verifyAssertion($assertion, 'GET /me', $key->publicKey, 0, Environment::Production)->counter;

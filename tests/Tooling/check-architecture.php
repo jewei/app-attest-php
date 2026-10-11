@@ -41,7 +41,7 @@ $checked = 0;
 foreach ($files as $file) {
     $source = (string) file_get_contents($root.'/'.$file);
 
-    if (! str_contains($source, '<?php')) {
+    if (stripos($source, '<?php') === false) {
         continue;
     }
 

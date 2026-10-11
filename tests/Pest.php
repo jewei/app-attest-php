@@ -146,7 +146,7 @@ function appleSample(): array
     $sample = loadSpec('apple-sample-attestation.json');
 
     return [
-        'verifier' => new Verifier(new AppId(specString($sample, 'appIdPrefix'), specString($sample, 'bundleId')), Environment::Production),
+        'verifier' => new Verifier(new AppId(specString($sample, 'appIdPrefix'), specString($sample, 'bundleId')), Environment::Production, null),
         'attestation' => (string) base64_decode(specString($sample, 'attestation'), true),
         'keyId' => (string) base64_decode(specString($sample, 'keyId'), true),
         'clientDataHash' => specString($sample, 'clientDataHash'),

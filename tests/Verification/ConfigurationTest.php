@@ -42,7 +42,7 @@ it('names the AAGUID of each environment', function (): void {
 
 it('uses the pinned Apple root by default', function (): void {
     $attestation = testAttestation();
-    $verifier = new Verifier(testAppId(), Environment::Production);
+    $verifier = new Verifier(testAppId(), Environment::Production, null);
 
     expect(failureOf(fn () => $verifier->verifyAttestation($attestation['attestation'], $attestation['keyId'], testClientDataHash())))
         ->toBe(Failure::InvalidCertificate);
@@ -59,7 +59,7 @@ it('refuses an empty or mixed category list', function (array $categories): void
 ]);
 
 it('refuses a trust anchor that is not a CA certificate PEM', function (string $anchor): void {
-    expect(fn () => new Verifier(testAppId(), Environment::Production, trustAnchor: $anchor))->toThrow(\InvalidArgumentException::class);
+    expect(fn () => new Verifier(testAppId(), Environment::Production, null, $anchor))->toThrow(\InvalidArgumentException::class);
 })->with([
     'empty' => [''],
     'file path' => ['file://'.__DIR__.'/../../resources/apple-app-attestation-root-ca.pem'],
@@ -81,7 +81,7 @@ it('keeps VerificationException construction internal', function (): void {
 
 it('keeps the failure codes stable', function (): void {
     expect(array_map(static fn (Failure $failure): string => $failure->value, Failure::cases()))->toBe([
-        'malformed_input', 'unsupported_format', 'invalid_certificate', 'nonce_mismatch', 'key_id_mismatch',
+        'malformed_input', 'unsupported_format', 'unsupported_platform', 'invalid_certificate', 'nonce_mismatch', 'key_id_mismatch',
         'app_id_mismatch', 'non_zero_counter', 'environment_mismatch', 'credential_id_mismatch',
         'category_not_allowed', 'invalid_signature', 'counter_not_increased',
     ]);
@@ -95,7 +95,29 @@ it('names Apple\'s validation categories', function (): void {
 it('leaves no PHP error behind when OpenSSL refuses input', function (): void {
     error_clear_last();
 
-    expect(fn () => new Verifier(testAppId(), Environment::Production, trustAnchor: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"))
+    expect(fn () => new Verifier(testAppId(), Environment::Production, null, "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"))
         ->toThrow(\InvalidArgumentException::class)
         ->and(error_get_last())->toBeNull();
+});
+
+it('refuses a trust anchor that is not a CA, cannot sign certificates, or has a malformed time', function (\Closure $anchor): void {
+    $pem = $anchor();
+
+    expect(fn () => new Verifier(testAppId(), Environment::Production, null, is_string($pem) ? $pem : ''))->toThrow(\InvalidArgumentException::class);
+})->with([
+    'CA:FALSE with keyCertSign' => [fn () => TestAuthority::create(rootExtensions: "basicConstraints = critical,CA:FALSE\nkeyUsage = critical,keyCertSign")->rootPem],
+    'CA:TRUE with cRLSign only' => [fn () => TestAuthority::create(rootExtensions: "basicConstraints = critical,CA:TRUE\nkeyUsage = critical,cRLSign")->rootPem],
+    'a time that DER refuses' => [function (): string {
+        $der = TestAuthority::shared()->rootDer;
+        $at = strpos($der, "\x17\x0D");
+        $der[(int) $at + 14] = '0';
+
+        return "-----BEGIN CERTIFICATE-----\n".chunk_split(base64_encode($der), 64, "\n")."-----END CERTIFICATE-----\n";
+    }],
+]);
+
+it('leaves OpenSSL\'s error queue empty after a refused trust anchor', function (): void {
+    expect(fn () => new Verifier(testAppId(), Environment::Production, null, "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"))
+        ->toThrow(\InvalidArgumentException::class)
+        ->and(openssl_error_string())->toBeFalse();
 });

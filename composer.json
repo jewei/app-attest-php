@@ -23,6 +23,9 @@
         "pestphp/pest": "^4.3.2 || ^5.3",
         "phpstan/phpstan": "^2.3"
     },
+    "conflict": {
+        "brianium/paratest": "7.26.1"
+    },
     "autoload": {
         "psr-4": {
             "AppAttest\\": "src/"

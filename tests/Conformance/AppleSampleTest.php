@@ -48,8 +48,8 @@ it('refuses the sample for each wrong input', function (string $case, Failure $f
     match ($case) {
         'challenge' => $clientDataHash = hash('sha256', $clientDataHash, true),
         'key ID' => $keyId[0] = chr(ord($keyId[0]) ^ 1),
-        'App ID' => $verifier = new Verifier(new AppId('1234567890', 'com.example.other'), Environment::Production),
-        'environment' => $verifier = new Verifier(new AppId('1234567890', 'com.example.myapp'), Environment::Development),
+        'App ID' => $verifier = new Verifier(new AppId('1234567890', 'com.example.other'), Environment::Production, null),
+        'environment' => $verifier = new Verifier(new AppId('1234567890', 'com.example.myapp'), Environment::Development, null),
         'category' => $verifier = new Verifier(new AppId('1234567890', 'com.example.myapp'), Environment::Production, [ValidationCategory::AppStore]),
         default => throw new \LogicException($case),
     };

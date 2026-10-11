@@ -17,7 +17,10 @@ use OpenSSLCertificate;
  * openssl_x509_parse(), whose text output falls back to raw bytes for values
  * that OpenSSL cannot decode. The checks:
  *
- * - The intermediate is not the trust anchor itself.
+ * - The intermediate is not the trust anchor: not its key, and not self-issued. (ECDSA signatures are
+ *   malleable, so a byte comparison could not tell a re-signed copy of the anchor.)
+ * - The credential key is EC P-256 and the intermediate key EC P-256 or P-384, checked before OpenSSL
+ *   parses any key from the device.
  * - Neither certificate has a critical extension other than basicConstraints and keyUsage.
  * - The intermediate is a CA (basicConstraints cA) with keyCertSign; the credential certificate is not a CA.
  * - Each issuer name equals the next certificate's subject name, byte for byte.
@@ -37,8 +40,12 @@ final class CertificateChain
         $credential = Der::certificate($credentialDer);
         $intermediate = Der::certificate($intermediateDer);
 
-        if ($intermediateDer === $anchor->der) {
-            throw self::invalid('The intermediate certificate is the trust anchor.');
+        if ($intermediate['publicKey'] === $anchor->fields['publicKey'] || $intermediate['issuer'] === $intermediate['subject']) {
+            throw self::invalid('The intermediate certificate is the trust anchor or self-issued.');
+        }
+
+        if ($credential['curve'] !== Der::P256 || ! in_array($intermediate['curve'], [Der::P256, Der::P384], true)) {
+            throw self::invalid('A certificate key is not EC P-256 (credential) or EC P-256 or P-384 (intermediate).');
         }
 
         foreach (['credential' => $credential, 'intermediate' => $intermediate] as $name => $fields) {
@@ -102,7 +109,7 @@ final class CertificateChain
             throw new InvalidArgumentException('The trust anchor is not a CA that may sign a CA certificate.');
         }
 
-        return new TrustAnchor($certificate, $der, $fields);
+        return new TrustAnchor($certificate, $fields);
     }
 
     /** @param list<Extension> $extensions */

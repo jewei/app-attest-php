@@ -6,6 +6,7 @@ namespace AppAttest\Testing;
 
 use AppAttest\AppId;
 use AppAttest\Environment;
+use AppAttest\Internal\CborEncoder;
 use AppAttest\ValidationCategory;
 use OpenSSLAsymmetricKey;
 use RuntimeException;
@@ -46,14 +47,14 @@ final class TestDevice
     {
         $authData = $this->appId->hash()."\x40\x00\x00\x00\x00".$this->environment->aaguid()
             .pack('n', 32).$this->keyId
-            .Cbor::map([1 => 2, 3 => -7, -1 => 1, -2 => Cbor::bytes(substr($this->point, 1, 32)), -3 => Cbor::bytes(substr($this->point, 33, 32))])
+            .CborEncoder::map([1 => 2, 3 => -7, -1 => 1, -2 => CborEncoder::bytes(substr($this->point, 1, 32)), -3 => CborEncoder::bytes(substr($this->point, 33, 32))])
             .$this->extensions();
         [$credential, $intermediate] = $this->authority->issue($this->key, $this->keyId, hash('sha256', $authData.$clientDataHash, true));
 
-        return Cbor::map([
-            'fmt' => Cbor::text('apple-appattest'),
-            'attStmt' => Cbor::map(['x5c' => Cbor::array([Cbor::bytes($credential), Cbor::bytes($intermediate)]), 'receipt' => Cbor::bytes('test receipt')]),
-            'authData' => Cbor::bytes($authData),
+        return CborEncoder::map([
+            'fmt' => CborEncoder::text('apple-appattest'),
+            'attStmt' => CborEncoder::map(['x5c' => CborEncoder::array([CborEncoder::bytes($credential), CborEncoder::bytes($intermediate)]), 'receipt' => CborEncoder::bytes('test receipt')]),
+            'authData' => CborEncoder::bytes($authData),
         ]);
     }
 
@@ -61,14 +62,16 @@ final class TestDevice
     public function assert(string $clientData): string
     {
         $this->counter++;
-        $authenticatorData = $this->appId->hash()."\x40".pack('N', $this->counter).$this->extensions();
+        $extensions = $this->extensions();
+        // Real assertions with extensions set AT and ED (0xC0), as the iOS 27 fixture in spec/ shows.
+        $authenticatorData = $this->appId->hash().($extensions === '' ? "\x40" : "\xC0").pack('N', $this->counter).$extensions;
         $nonce = hash('sha256', $authenticatorData.hash('sha256', $clientData, true), true);
 
         if (! openssl_sign($nonce, $signature, $this->key, OPENSSL_ALGO_SHA256) || ! is_string($signature)) {
             throw new RuntimeException('openssl_sign failed.');
         }
 
-        return Cbor::map(['signature' => Cbor::bytes($signature), 'authenticatorData' => Cbor::bytes($authenticatorData)]);
+        return CborEncoder::map(['signature' => CborEncoder::bytes($signature), 'authenticatorData' => CborEncoder::bytes($authenticatorData)]);
     }
 
     /** The counter of the last assertion. */
@@ -83,9 +86,9 @@ final class TestDevice
             return '';
         }
 
-        return Cbor::map([
-            'apple_bundle_version_01' => Cbor::text($this->bundleVersion),
-            'apple_validation_category_01' => Cbor::bytes(pack('V', $this->category->value)),
+        return CborEncoder::map([
+            'apple_bundle_version_01' => CborEncoder::text($this->bundleVersion),
+            'apple_validation_category_01' => CborEncoder::bytes(pack('V', $this->category->value)),
         ]);
     }
 }

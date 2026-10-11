@@ -54,7 +54,7 @@ final readonly class TestAuthority
     public function device(
         AppId $appId,
         Environment $environment = Environment::Production,
-        ?ValidationCategory $category = ValidationCategory::Development,
+        ?ValidationCategory $category = ValidationCategory::TestFlight,
         string $bundleVersion = '1.0',
     ): TestDevice {
         return new TestDevice($this, self::key('prime256v1'), $appId, $environment, $category, $bundleVersion);

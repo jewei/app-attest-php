@@ -44,16 +44,25 @@ final class TestAuthority
         int $rootDays = 3650,
         int $intermediateDays = 3650,
         string $rootExtensions = self::CA_EXTENSIONS,
+        string $intermediateCurve = 'secp384r1',
     ): self {
         $rootKey = self::key('secp384r1');
         $root = self::sign(['commonName' => 'Test App Attestation Root CA', 'organizationName' => 'Test'], $rootKey, null, $rootKey,
             $rootExtensions, $rootDays, 'sha384');
 
-        $intermediateKey = self::key('secp384r1');
+        $intermediateKey = self::key($intermediateCurve);
         $intermediate = self::sign(['commonName' => 'Test App Attestation CA 1', 'organizationName' => 'Test'], $intermediateKey, $root, $rootKey,
             $intermediateExtensions, $intermediateDays, 'sha384');
 
         return new self(self::pem($root), self::der($root), $rootKey, $root, self::der($intermediate), $intermediate, $intermediateKey);
+    }
+
+    /** OpenSSL extension lines for the App Attest platform field ([1026]) with $platform. */
+    public static function platformExtension(string $platform): string
+    {
+        $field = "\xBF\x88\x02".chr(strlen($platform) + 2)."\x04".chr(strlen($platform)).$platform;
+
+        return '1.2.840.113635.100.8.7 = DER:'.self::hexColons("\x30".chr(strlen($field)).$field);
     }
 
     /** A P-256 key from tests/Fixtures. */
@@ -109,6 +118,26 @@ final class TestAuthority
         }
 
         return $details['key'];
+    }
+
+    /** A copy of the root: the same key and name under a new serial number, so its DER differs (DER). */
+    public function rootCopy(): string
+    {
+        return self::der(self::sign(['commonName' => 'Test App Attestation Root CA', 'organizationName' => 'Test'], $this->rootKey, null, $this->rootKey,
+            self::CA_EXTENSIONS, 3650, 'sha384'));
+    }
+
+    /**
+     * An intermediate that the root's key signed under another issuer name (DER), so that only the name
+     * check can refuse it.
+     */
+    public function intermediateIssuedUnder(string $issuerCommonName): string
+    {
+        $otherRoot = self::sign(['commonName' => $issuerCommonName, 'organizationName' => 'Test'], $this->rootKey, null, $this->rootKey,
+            self::CA_EXTENSIONS, 3650, 'sha384');
+
+        return self::der(self::sign(['commonName' => 'Test App Attestation CA 1', 'organizationName' => 'Test'], $this->intermediateKey, $otherRoot, $this->rootKey,
+            "basicConstraints = critical,CA:TRUE,pathlen:0\nkeyUsage = critical,keyCertSign,cRLSign", 3650, 'sha384'));
     }
 
     /** Another intermediate certificate for the same key, with another subject name (DER). */

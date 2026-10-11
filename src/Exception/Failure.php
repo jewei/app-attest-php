@@ -11,6 +11,8 @@ enum Failure: string
     case MalformedInput = 'malformed_input';
     /** The attestation format is not `apple-appattest`. */
     case UnsupportedFormat = 'unsupported_format';
+    /** The credential certificate names a platform other than iPhone and iPad (`iphoneos`), such as macOS. */
+    case UnsupportedPlatform = 'unsupported_platform';
     /**
      * A certificate is malformed; the chain does not lead to the trust anchor; a certificate is not valid at
      * the check time; a CA flag, key usage, or critical extension is wrong; the nonce extension is missing or

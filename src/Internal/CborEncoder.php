@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace AppAttest\Testing;
+namespace AppAttest\Internal;
 
-/** @internal A minimal CBOR encoder for test devices. Values are encoded already. */
-final class Cbor
+/** @internal A minimal CBOR encoder for AppAttest\Testing. Map values are encoded CBOR or integers. */
+final class CborEncoder
 {
     /** @param array<int|string, string|int> $entries Keys are encoded as integers or text; values are encoded CBOR or integers. */
     public static function map(array $entries): string

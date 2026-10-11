@@ -44,14 +44,14 @@ it('verifies a real iOS 27 assertion with Apple\'s extensions', function (): voi
 
 it('refuses the real assertion when anything differs', function (string $case, Failure $failure): void {
     $fixture = realAssertion();
-    $verifier = new Verifier($fixture['appId'], Environment::Production);
+    $verifier = new Verifier($fixture['appId'], Environment::Production, null);
     $clientData = $fixture['clientData'];
     $previous = $fixture['previous'];
 
     match ($case) {
         'replayed' => $previous = $fixture['counter'],
         'client data' => $clientData .= ' ',
-        'App ID' => $verifier = new Verifier(new AppId('6PU678XRWJ', 'com.example.other'), Environment::Production),
+        'App ID' => $verifier = new Verifier(new AppId('6PU678XRWJ', 'com.example.other'), Environment::Production, null),
         'App Store only' => $verifier = new Verifier($fixture['appId'], Environment::Production, [ValidationCategory::AppStore]),
         default => throw new \LogicException($case),
     };

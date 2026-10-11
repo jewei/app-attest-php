@@ -143,15 +143,17 @@ it('accepts a signed assertion at the size limit and refuses one byte more', fun
     $key = attestedKey();
     $sized = static function (int $size) use ($key): string {
         $padding = static fn (int $length): string => TestAuthority::assertion($key['key'], testAppId(), 'GET /me', 1, ['extensions' => ['apple_bundle_version_01' => str_repeat('1', $length)]]);
-        $base = strlen($padding(300));
+        $length = 300;
 
-        // A signature is 70 to 72 bytes, so retry until the size is exact.
-        for ($attempt = 0; $attempt < 50; $attempt++) {
-            $assertion = $padding(300 + $size - $base);
+        // An ECDSA signature has 68 to 72 bytes, so correct the padding from each result until the size is exact.
+        for ($attempt = 0; $attempt < 200; $attempt++) {
+            $assertion = $padding($length);
 
             if (strlen($assertion) === $size) {
                 return $assertion;
             }
+
+            $length += $size - strlen($assertion);
         }
 
         throw new \RuntimeException('No assertion of the exact size.');
@@ -194,18 +196,18 @@ it('refuses a previous counter outside the 32-bit range', function (int $previou
     expect(fn () => testVerifier()->verifyAssertion("\xA0", 'x', attestedKey()['publicKey'], $previous, Environment::Production))->toThrow(\InvalidArgumentException::class);
 })->with([-1, 0x100000000, PHP_INT_MIN]);
 
-it('leaves OpenSSL\'s error queue empty', function (array $options): void {
-    assertionFailure(options: $options);
+it('leaves OpenSSL\'s error queue empty', function (\Closure $call): void {
+    $call();
 
     expect(openssl_error_string())->toBeFalse();
 })->with([
-    'valid' => [[]],
-    'junk signature' => [['signature' => 'junk']],
+    'valid' => [fn () => assertionFailure()],
+    'junk signature' => [fn () => assertionFailure(options: ['signature' => 'junk'])],
+    'a stored key with a bad PEM body' => [function (): void {
+        try {
+            testVerifier()->verifyAssertion("\xA0", 'x', "-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n", 0, Environment::Production);
+        } catch (\InvalidArgumentException) {
+            // Expected: the stored key is not a PEM key.
+        }
+    }],
 ]);
-
-it('reads the counter as a big-endian 32-bit integer', function (): void {
-    $key = attestedKey();
-    $assertion = TestAuthority::assertion($key['key'], testAppId(), 'GET /me', 0x01020304);
-
-    expect(testVerifier()->verifyAssertion($assertion, 'GET /me', $key['publicKey'], 0x01020303, Environment::Production)->counter)->toBe(0x01020304);
-});

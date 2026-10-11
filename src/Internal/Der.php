@@ -17,6 +17,7 @@ use AppAttest\Exception\VerificationException;
  *
  * @phpstan-type Element array{tag: int, offset: int, start: int, end: int}
  * @phpstan-type Extension array{oid: string, critical: bool, value: string}
+ * @phpstan-type Certificate array{issuer: string, subject: string, publicKey: string, curve: ?string, notBefore: int, notAfter: int, extensions: list<Extension>}
  */
 final class Der
 {
@@ -42,6 +43,15 @@ final class Der
     /** OID 2.5.29.15, keyUsage, as DER content bytes. */
     public const string KEY_USAGE = "\x55\x1D\x0F";
 
+    /** OID 1.2.840.10045.2.1, id-ecPublicKey. */
+    public const string EC_PUBLIC_KEY = "\x2A\x86\x48\xCE\x3D\x02\x01";
+
+    /** OID 1.2.840.10045.3.1.7, prime256v1 (P-256). */
+    public const string P256 = "\x2A\x86\x48\xCE\x3D\x03\x01\x07";
+
+    /** OID 1.3.132.0.34, secp384r1 (P-384). */
+    public const string P384 = "\x2B\x81\x04\x00\x22";
+
     /**
      * Reads the element at $offset, which must end at or before $limit.
      *
@@ -59,40 +69,9 @@ final class Der
             throw self::invalid('A DER element has a multi-byte tag.');
         }
 
-        $first = ord($data[$offset + 1]);
-        $start = $offset + 2;
+        [$start, $end] = self::length($data, $offset + 1, $limit);
 
-        if ($first < 0x80) {
-            $length = $first;
-        } else {
-            $size = $first & 0x7F;
-
-            if ($size === 0 || $size > 4 || $start + $size > $limit) {
-                throw self::invalid('A DER element has an indefinite, oversized, or truncated length.');
-            }
-
-            if (ord($data[$start]) === 0) {
-                throw self::invalid('A DER length is not minimal.');
-            }
-
-            $length = 0;
-
-            for ($index = 0; $index < $size; $index++) {
-                $length = ($length << 8) | ord($data[$start + $index]);
-            }
-
-            if ($length < 0x80) {
-                throw self::invalid('A DER length is not minimal.');
-            }
-
-            $start += $size;
-        }
-
-        if ($length > $limit - $start) {
-            throw self::invalid('A DER element is truncated.');
-        }
-
-        return ['tag' => $tag, 'offset' => $offset, 'start' => $start, 'end' => $start + $length];
+        return ['tag' => $tag, 'offset' => $offset, 'start' => $start, 'end' => $end];
     }
 
     /**
@@ -118,7 +97,10 @@ final class Der
      * Extensions are a list in certificate order; an OID that appears twice
      * is refused (RFC 5280, section 4.2).
      *
-     * @return array{issuer: string, subject: string, notBefore: int, notAfter: int, extensions: list<Extension>}
+     * `publicKey` is the SubjectPublicKeyInfo DER. `curve` is the named curve OID (content bytes) of an
+     * id-ecPublicKey key, or null for any other key.
+     *
+     * @return array{issuer: string, subject: string, publicKey: string, curve: ?string, notBefore: int, notAfter: int, extensions: list<Extension>}
      */
     public static function certificate(string $certificate): array
     {
@@ -138,6 +120,10 @@ final class Der
             throw self::invalid('A certificate does not have the version 3 TBSCertificate fields.');
         }
 
+        if (self::raw($certificate, $fields[0]) !== "\xA0\x03\x02\x01\x02") {
+            throw self::invalid('A certificate is not version 3.');
+        }
+
         if (! in_array(array_slice($tags, 7), [[], [0xA3], [0x81, 0xA3], [0x82, 0xA3], [0x81, 0x82, 0xA3], [0x81], [0x82], [0x81, 0x82]], true)) {
             throw self::invalid('A certificate has unexpected fields after the public key.');
         }
@@ -153,6 +139,8 @@ final class Der
         return [
             'issuer' => self::raw($certificate, $fields[3]),
             'subject' => self::raw($certificate, $fields[5]),
+            'publicKey' => self::raw($certificate, $fields[6]),
+            'curve' => self::curve($certificate, $fields[6]),
             'notBefore' => self::time($certificate, $validity[0]),
             'notAfter' => self::time($certificate, $validity[1]),
             'extensions' => $last['tag'] === 0xA3 ? self::extensions($certificate, $last) : [],
@@ -188,7 +176,12 @@ final class Der
         $pathLength = null;
 
         if ($fields !== [] && $fields[0]['tag'] === self::BOOLEAN) {
-            $ca = self::boolean($value, $fields[0]);
+            // DER omits the DEFAULT FALSE, so a written cA is TRUE.
+            if (! self::boolean($value, $fields[0])) {
+                throw self::invalid('basicConstraints writes the default cA FALSE.');
+            }
+
+            $ca = true;
             $fields = array_slice($fields, 1);
         }
 
@@ -209,8 +202,15 @@ final class Der
     {
         $bits = self::whole($value, self::BIT_STRING, 'keyUsage');
 
-        if ($bits['end'] - $bits['start'] < 2 || ord($value[$bits['start']]) > 7) {
+        $unused = $bits['end'] - $bits['start'] < 2 ? 8 : ord($value[$bits['start']]);
+
+        if ($unused > 7) {
             throw self::invalid('keyUsage is not a non-empty BIT STRING.');
+        }
+
+        // DER sets the unused bits of the last byte to zero (X.690, section 11.2.1).
+        if ((ord($value[$bits['end'] - 1]) & ((1 << $unused) - 1)) !== 0) {
+            throw self::invalid('keyUsage has bits set in its unused bits.');
         }
 
         return (ord($value[$bits['start'] + 1]) & 0x04) !== 0;
@@ -239,6 +239,102 @@ final class Der
     }
 
     /**
+     * Returns the text of the platform field ([1026], for example "iphoneos") in the App Attest extension
+     * 1.2.840.113635.100.8.7, or null when the field is absent. The extension is a SEQUENCE of explicitly
+     * tagged fields with multi-byte tag numbers, which element() refuses elsewhere.
+     */
+    public static function platform(string $value): ?string
+    {
+        $sequence = self::whole($value, self::SEQUENCE, 'The App Attest platform extension');
+        $fields = [];
+
+        for ($offset = $sequence['start']; $offset < $sequence['end']; $offset = $end) {
+            if (ord($value[$offset]) !== 0xBF) {
+                throw self::invalid('A field of the platform extension is not a context-specific tag.');
+            }
+
+            $number = 0;
+            $offset++;
+
+            for ($index = 0; ; $index++) {
+                if ($index === 4 || $offset >= $sequence['end'] || ($index === 0 && ord($value[$offset]) === 0x80)) {
+                    throw self::invalid('A field of the platform extension has an invalid tag number.');
+                }
+
+                $byte = ord($value[$offset++]);
+                $number = ($number << 7) | ($byte & 0x7F);
+
+                if ($byte < 0x80) {
+                    break;
+                }
+            }
+
+            [$start, $end] = self::length($value, $offset, $sequence['end']);
+
+            if (isset($fields[$number])) {
+                throw self::invalid('The platform extension has the same field twice.');
+            }
+
+            $fields[$number] = substr($value, $start, $end - $start);
+        }
+
+        if (! isset($fields[1026])) {
+            return null;
+        }
+
+        $text = self::whole($fields[1026], self::OCTET_STRING, 'The platform field');
+
+        return self::content($fields[1026], $text);
+    }
+
+    /**
+     * Reads the length at $offset and returns the content's start and end offsets.
+     *
+     * @return array{int, int}
+     */
+    private static function length(string $data, int $offset, int $limit): array
+    {
+        if ($offset >= $limit) {
+            throw self::invalid('A DER length is missing.');
+        }
+
+        $first = ord($data[$offset]);
+        $start = $offset + 1;
+
+        if ($first < 0x80) {
+            $length = $first;
+        } else {
+            $size = $first & 0x7F;
+
+            if ($size === 0 || $size > 4 || $start + $size > $limit) {
+                throw self::invalid('A DER element has an indefinite, oversized, or truncated length.');
+            }
+
+            if (ord($data[$start]) === 0) {
+                throw self::invalid('A DER length is not minimal.');
+            }
+
+            $length = 0;
+
+            for ($index = 0; $index < $size; $index++) {
+                $length = ($length << 8) | ord($data[$start + $index]);
+            }
+
+            if ($length < 0x80) {
+                throw self::invalid('A DER length is not minimal.');
+            }
+
+            $start += $size;
+        }
+
+        if ($length > $limit - $start) {
+            throw self::invalid('A DER element is truncated.');
+        }
+
+        return [$start, $start + $length];
+    }
+
+    /**
      * @param  Element  $wrapper  The [3] element.
      * @return list<Extension>
      */
@@ -252,8 +348,13 @@ final class Der
 
         $extensions = [];
         $seen = [];
+        $entries = self::children($certificate, $list[0]['start'], $list[0]['end']);
 
-        foreach (self::children($certificate, $list[0]['start'], $list[0]['end']) as $extension) {
+        if ($entries === []) {
+            throw self::invalid('The certificate extension list is empty (RFC 5280 requires at least one).');
+        }
+
+        foreach ($entries as $extension) {
             if ($extension['tag'] !== self::SEQUENCE) {
                 throw self::invalid('A certificate extension is not a SEQUENCE.');
             }
@@ -262,7 +363,12 @@ final class Der
             $critical = false;
 
             if (count($fields) === 3 && $fields[1]['tag'] === self::BOOLEAN) {
-                $critical = self::boolean($certificate, $fields[1]);
+                // DER omits a DEFAULT value (X.690, section 11.5), so a written critical flag is TRUE.
+                if (! self::boolean($certificate, $fields[1])) {
+                    throw self::invalid('A certificate extension writes the default critical flag FALSE.');
+                }
+
+                $critical = true;
                 $fields = [$fields[0], $fields[2]];
             }
 
@@ -306,6 +412,10 @@ final class Der
 
         if ($element['tag'] === self::UTC_TIME) {
             $year += $year >= 50 ? 1900 : 2000;
+        } elseif ($year < 2050) {
+            // RFC 5280 writes dates through 2049 as UTCTime. This also keeps gmmktime() away from
+            // years 0 to 100, which it maps to other centuries.
+            throw self::invalid('A GeneralizedTime certificate time is before 2050.');
         }
 
         if (! checkdate($month, $day, $year) || $hour > 23 || $minute > 59 || $second > 59) {
@@ -315,6 +425,29 @@ final class Der
         $timestamp = gmmktime($hour, $minute, $second, $month, $day, $year);
 
         return $timestamp !== false ? $timestamp : throw self::invalid('A certificate time is out of range.');
+    }
+
+    /**
+     * The named curve of an id-ecPublicKey SubjectPublicKeyInfo, as OID content bytes, or null.
+     *
+     * @param  Element  $element
+     */
+    private static function curve(string $data, array $element): ?string
+    {
+        $parts = self::children($data, $element['start'], $element['end']);
+
+        if (count($parts) !== 2 || $parts[0]['tag'] !== self::SEQUENCE || $parts[1]['tag'] !== self::BIT_STRING) {
+            throw self::invalid('A certificate public key is not an algorithm and a BIT STRING.');
+        }
+
+        $algorithm = self::children($data, $parts[0]['start'], $parts[0]['end']);
+
+        if (count($algorithm) !== 2 || $algorithm[0]['tag'] !== self::OBJECT_IDENTIFIER || $algorithm[1]['tag'] !== self::OBJECT_IDENTIFIER
+            || self::content($data, $algorithm[0]) !== self::EC_PUBLIC_KEY) {
+            return null;
+        }
+
+        return self::content($data, $algorithm[1]);
     }
 
     /** @param Element $element */

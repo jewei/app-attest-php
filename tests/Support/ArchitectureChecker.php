@@ -54,7 +54,11 @@ final class ArchitectureChecker
                 };
 
                 foreach ($names as $name) {
-                    if ($name === ArchitectureChecker::INTERNAL || str_starts_with($name, ArchitectureChecker::INTERNAL.'\\')) {
+                    // PHP class names are case-insensitive.
+                    $lower = strtolower($name);
+                    $internal = strtolower(ArchitectureChecker::INTERNAL);
+
+                    if ($lower === $internal || str_starts_with($lower, $internal.'\\')) {
                         $this->found[] = "line {$node->getStartLine()}: {$name}";
                     }
                 }
@@ -72,7 +76,7 @@ final class ArchitectureChecker
     /** True when text names the internal namespace: the name not followed by more name characters. */
     public static function namesInternal(string $text): bool
     {
-        return preg_match('/'.preg_quote(self::INTERNAL, '/').'(?![A-Za-z0-9_\\x80-\\xff])/', $text) === 1;
+        return preg_match('/'.preg_quote(self::INTERNAL, '/').'(?![A-Za-z0-9_\\x80-\\xff])/i', $text) === 1;
     }
 
     /** True when a document names the internal namespace or one of its classes. */

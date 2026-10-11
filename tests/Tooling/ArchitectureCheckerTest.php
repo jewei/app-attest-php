@@ -24,6 +24,8 @@ it('finds each way to name the internal namespace', function (string $source): v
     'class string' => ['$class = "'.str_replace('\\', '\\\\', internalNamespace('\\Cbor')).'";'],
     'namespace declaration' => ['namespace '.internalNamespace().';'],
     'syntax error' => ['function ('],
+    'lowercase name' => ['\\'.strtolower(internalNamespace('\\Cbor')).'::decode("");'],
+    'lowercase class string' => ['$class = "'.str_replace('\\', '\\\\', strtolower(internalNamespace('\\Cbor'))).'";'],
 ]);
 
 it('allows the public API and similar names', function (string $source): void {

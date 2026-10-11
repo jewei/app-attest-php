@@ -27,18 +27,28 @@ function extension(string $oid, string $value, ?bool $critical = null): string
  * @param  list<string>|null  $extensions  DER Extension SEQUENCEs, or null for no [3] element.
  */
 function certificateWith(
-    ?array $extensions = [],
+    ?array $extensions = null,
     ?string $validity = null,
     ?string $afterKey = null,
     string $issuer = "\x30\x0D\x31\x0B\x30\x09\x06\x03\x55\x04\x03\x0C\x02CA",
     string $subject = "\x30\x0F\x31\x0D\x30\x0B\x06\x03\x55\x04\x03\x0C\x04leaf",
     string $version = "\xA0\x03\x02\x01\x02",
+    ?string $publicKey = null,
+    ?string $signatureAlgorithm = null,
+    ?string $signature = null,
 ): string {
     $validity ??= tlv(0x30, tlv(0x17, '260101000000Z').tlv(0x17, '270101000000Z'));
     $afterKey ??= $extensions === null ? '' : tlv(0xA3, tlv(0x30, implode('', $extensions)));
-    $tbs = tlv(0x30, $version."\x02\x01\x01".tlv(0x30, '').$issuer.$validity.$subject.tlv(0x30, '').$afterKey);
+    $publicKey ??= ecKey(Der::P256);
+    $tbs = tlv(0x30, $version."\x02\x01\x01".tlv(0x30, '').$issuer.$validity.$subject.$publicKey.$afterKey);
 
-    return tlv(0x30, $tbs.tlv(0x30, '')."\x03\x01\x00");
+    return tlv(0x30, $tbs.($signatureAlgorithm ?? tlv(0x30, '')).($signature ?? "\x03\x01\x00"));
+}
+
+/** A SubjectPublicKeyInfo shape: id-ecPublicKey with a named curve and a placeholder point. */
+function ecKey(string $curve, string $algorithm = Der::EC_PUBLIC_KEY): string
+{
+    return tlv(0x30, tlv(0x30, tlv(0x06, $algorithm).tlv(0x06, $curve)).tlv(0x03, "\x00\x04".str_repeat("\x01", 64)));
 }
 
 it('reads short and long lengths', function (): void {
@@ -75,12 +85,14 @@ it('stays inside the limit and the data', function (): void {
 });
 
 it('reads the names, times, and extensions of a certificate', function (): void {
-    $certificate = Der::certificate(certificateWith([extension("\x55\x1D\x13", "\x30\x00", true), extension("\x2A\x03", 'value'), extension("\x2A\x04", 'x', false)]));
+    $certificate = Der::certificate(certificateWith([extension("\x55\x1D\x13", "\x30\x00", true), extension("\x2A\x03", 'value'), extension("\x2A\x04", 'x')]));
 
     expect($certificate['issuer'])->toBe("\x30\x0D\x31\x0B\x30\x09\x06\x03\x55\x04\x03\x0C\x02CA")
         ->and($certificate['subject'])->toBe("\x30\x0F\x31\x0D\x30\x0B\x06\x03\x55\x04\x03\x0C\x04leaf")
         ->and($certificate['notBefore'])->toBe(gmmktime(0, 0, 0, 1, 1, 2026))
         ->and($certificate['notAfter'])->toBe(gmmktime(0, 0, 0, 1, 1, 2027))
+        ->and($certificate['publicKey'])->toBe(ecKey(Der::P256))
+        ->and($certificate['curve'])->toBe(Der::P256)
         ->and($certificate['extensions'])->toBe([
             ['oid' => "\x55\x1D\x13", 'critical' => true, 'value' => "\x30\x00"],
             ['oid' => "\x2A\x03", 'critical' => false, 'value' => 'value'],
@@ -133,9 +145,27 @@ it('refuses malformed certificates and extension lists', function (string $certi
     'middle not a BOOLEAN' => [certificateWith([tlv(0x30, tlv(0x06, "\x2A\x03").tlv(0x02, "\x01").tlv(0x04, 'a'))])],
     'BOOLEAN of two bytes' => [certificateWith([tlv(0x30, tlv(0x06, "\x2A\x03").tlv(0x01, "\xFF\xFF").tlv(0x04, 'a'))])],
     'BOOLEAN 0x01' => [certificateWith([tlv(0x30, tlv(0x06, "\x2A\x03").tlv(0x01, "\x01").tlv(0x04, 'a'))])],
+    'critical written as the default FALSE' => [certificateWith([extension("\x2A\x03", 'a', false)])],
+    'an INTEGER where the flag goes' => [certificateWith([tlv(0x30, tlv(0x06, "\x2A\x03").tlv(0x02, "\xFF").tlv(0x04, 'a'))])],
+    'an INTEGER where the OID goes' => [certificateWith([tlv(0x30, tlv(0x02, "\x01").tlv(0x04, 'a'))])],
+    'an empty extension list' => [certificateWith([])],
+    'version 1 written out' => [certificateWith(version: "\xA0\x03\x02\x01\x00")],
+    'version 6' => [certificateWith(version: "\xA0\x03\x02\x01\x05")],
+    'version as an OCTET STRING' => [certificateWith(version: "\xA0\x03\x04\x01\x02")],
+    'three validity times' => [certificateWith(validity: tlv(0x30, tlv(0x17, '260101000000Z').tlv(0x17, '270101000000Z').tlv(0x17, '280101000000Z')))],
+    'four top-level parts' => [(static function (): string {
+        $certificate = certificateWith();
+        $outer = Der::element($certificate, 0, strlen($certificate));
+
+        return tlv(0x30, substr($certificate, $outer['start'])."\x05\x00");
+    })()],
+    'signature as an OCTET STRING' => [certificateWith(signature: "\x04\x01\x00")],
+    'algorithm as a SET' => [certificateWith(signatureAlgorithm: tlv(0x31, ''))],
+    'public key without a BIT STRING' => [certificateWith(publicKey: tlv(0x30, tlv(0x30, tlv(0x06, Der::EC_PUBLIC_KEY).tlv(0x06, Der::P256))))],
     'four fields' => [certificateWith([tlv(0x30, tlv(0x06, "\x2A\x03").tlv(0x01, "\xFF").tlv(0x04, 'a').tlv(0x04, 'b'))])],
     'version 1 (no [0])' => [certificateWith(version: '')],
     'one validity time' => [certificateWith(validity: tlv(0x30, tlv(0x17, '260101000000Z')))],
+    'a 9-byte length' => ["\x30\x89\x01\x00\x00\x00\x00\x00\x00\x00\x85".str_repeat("\x00", 133)],
     'validity not a SEQUENCE' => [certificateWith(validity: tlv(0x31, tlv(0x17, '260101000000Z').tlv(0x17, '270101000000Z')))],
     'not a SEQUENCE' => ["\x31\x00"],
     'trailing byte' => [certificateWith()."\x00"],
@@ -154,7 +184,8 @@ it('reads validity times in UTC', function (int $tag, string $time, int $expecte
     'UTCTime 50 is 1950' => [0x17, '500101000000Z', gmmktime(0, 0, 0, 1, 1, 1950)],
     'UTCTime 49 is 2049' => [0x17, '491231235959Z', gmmktime(23, 59, 59, 12, 31, 2049)],
     'GeneralizedTime' => [0x18, '20500101000000Z', gmmktime(0, 0, 0, 1, 1, 2050)],
-    'leap day' => [0x18, '20280229120000Z', gmmktime(12, 0, 0, 2, 29, 2028)],
+    'leap day' => [0x17, '280229120000Z', gmmktime(12, 0, 0, 2, 29, 2028)],
+    'GeneralizedTime in 2050' => [0x18, '20500101000000Z', gmmktime(0, 0, 0, 1, 1, 2050)],
 ]);
 
 it('does not depend on the process time zone', function (): void {
@@ -192,6 +223,9 @@ it('refuses validity times outside RFC 5280', function (int $tag, string $time):
     'minute 60' => [0x17, '260101006000Z'],
     'second 60' => [0x17, '260101000060Z'],
     'year 0000' => [0x18, '00000101000000Z'],
+    'GeneralizedTime in year 50' => [0x18, '00500101000000Z'],
+    'GeneralizedTime in 2049' => [0x18, '20491231235959Z'],
+    'GeneralizedTime in 1999' => [0x18, '19990101000000Z'],
     'not a time type' => [0x04, '260101000000Z'],
 ]);
 
@@ -206,7 +240,6 @@ it('decodes basicConstraints', function (string $value, array $expected): void {
     'CA with path length 200' => ["\x30\x07\x01\x01\xFF\x02\x02\x00\xC8", ['ca' => true, 'pathLength' => 200]],
     'CA with path length 258' => ["\x30\x07\x01\x01\xFF\x02\x02\x01\x02", ['ca' => true, 'pathLength' => 258]],
     'CA with path length 32767' => ["\x30\x07\x01\x01\xFF\x02\x02\x7F\xFF", ['ca' => true, 'pathLength' => 32767]],
-    'explicit false' => ["\x30\x03\x01\x01\x00", ['ca' => false, 'pathLength' => null]],
 ]);
 
 it('refuses malformed basicConstraints', function (string $value): void {
@@ -215,6 +248,8 @@ it('refuses malformed basicConstraints', function (string $value): void {
     'the text CA:TRUE' => ['CA:TRUE'],
     'not a SEQUENCE' => ["\x31\x03\x01\x01\xFF"],
     'BOOLEAN 0x01' => ["\x30\x03\x01\x01\x01"],
+    'cA written as the default FALSE' => ["\x30\x03\x01\x01\x00"],
+    'a path length that looks like a flag' => ["\x30\x03\x02\x01\xFF"],
     'negative path length' => ["\x30\x06\x01\x01\xFF\x02\x01\xFF"],
     'non-minimal path length' => ["\x30\x07\x01\x01\xFF\x02\x02\x00\x05"],
     'non-minimal path length 127' => ["\x30\x07\x01\x01\xFF\x02\x02\x00\x7F"],
@@ -222,7 +257,7 @@ it('refuses malformed basicConstraints', function (string $value): void {
     'negative two-byte path length' => ["\x30\x07\x01\x01\xFF\x02\x02\x80\x00"],
     'path length of three bytes' => ["\x30\x08\x01\x01\xFF\x02\x03\x01\x00\x00"],
     'empty path length' => ["\x30\x05\x01\x01\xFF\x02\x00"],
-    'path length before the flag' => ["\x30\x06\x02\x01\x00\x01\x01\xFF"],
+    'path length before the flag' => ["\x30\x06\x02\x01\x01\x01\x01\xFF"],
     'extra field' => ["\x30\x05\x01\x01\xFF\x05\x00"],
     'trailing byte' => ["\x30\x03\x01\x01\xFF\x00"],
 ]);
@@ -246,6 +281,10 @@ it('refuses malformed keyUsage', function (string $value): void {
     'the text Certificate Sign' => ['Certificate Sign'],
     'no bits' => ["\x03\x01\x00"],
     'eight unused bits' => ["\x03\x02\x08\x04"],
+    'keyCertSign in the unused bits' => ["\x03\x02\x03\x04"],
+    'keyCertSign under five unused bits' => ["\x03\x02\x05\x04"],
+    'a set bit in the unused bits' => ["\x03\x02\x01\x05"],
+    'a set unused bit in the last of two bytes' => ["\x03\x03\x07\x04\x81"],
     'OCTET STRING' => ["\x04\x02\x01\x06"],
     'trailing byte' => ["\x03\x02\x01\x06\x00"],
 ]);
@@ -267,4 +306,33 @@ it('refuses a nonce extension of another shape', function (string $value): void 
     'two OCTET STRINGs' => ["\x30\x0A\xA1\x08\x04\x02AB\x04\x02AB"],
     'INTEGER inside' => ["\x30\x06\xA1\x04\x02\x02AB"],
     'empty [1]' => ["\x30\x02\xA1\x00"],
+]);
+
+it('reads the curve of an EC key and nothing for another key', function (): void {
+    expect(Der::certificate(certificateWith(publicKey: ecKey(Der::P384)))['curve'])->toBe(Der::P384)
+        ->and(Der::certificate(certificateWith(publicKey: ecKey("\x05\x00", "\x2A\x86\x48\x86\xF7\x0D\x01\x01\x01")))['curve'])->toBeNull()
+        ->and(Der::certificate(certificateWith(publicKey: tlv(0x30, tlv(0x30, tlv(0x06, Der::EC_PUBLIC_KEY).tlv(0x30, '')).tlv(0x03, "\x00\x04"))))['curve'])->toBeNull();
+});
+
+it('reads the platform from the App Attest platform extension', function (string $value, ?string $platform): void {
+    expect(Der::platform((string) hex2bin($value)))->toBe($platform);
+})->with([
+    'Apple\'s sample' => ['3081cfbf8a7806040432372e30bf885003020102bf8a79090407312e302e323136bf8a7b09040732344133323562bf8a7c06040432372e30bf8a7d06040432372e30bf8a7e03020100bf8a7f03020100bf8b0003020100bf8b0103020100bf8b0203020100bf8b0303020100bf8b0403020101bf8b0503020100bf8b0a10040e32342e312e3332352e302e322c30bf8b0b10040e32342e312e3332352e302e322c30bf8b0c10040e32342e312e3332352e302e322c30bf88020a04086970686f6e656f73bf88050a0408496e7465726e616c', 'iphoneos'],
+    'macOS' => ['300cbf88020804066d61636f7378', 'macosx'],
+    'no platform field' => ['300abf8a7806040432372e30', null],
+    'empty' => ['3000', null],
+]);
+
+it('refuses a platform extension of another shape', function (string $value): void {
+    expect(failureOf(fn () => Der::platform((string) hex2bin($value))))->toBe(Failure::InvalidCertificate);
+})->with([
+    'not a SEQUENCE' => ['310cbf88020804066d61636f7378'],
+    'a low tag number' => ['300aa1080406697068006f6e65'],
+    'a non-minimal tag number' => ['300dbf8088020804066d61636f7378'],
+    'a five-byte tag number' => ['3010bf8080808002080406697068006f6e65'],
+    'a truncated tag number' => ['3002bf88'],
+    'a truncated length' => ['3003bf8802'],
+    'the platform twice' => ['3018bf88020804066d61636f7378bf88020804066d61636f7378'],
+    'the platform not an OCTET STRING' => ['300cbf88020802066d61636f7378'],
+    'trailing bytes in the platform' => ['300ebf88020a04066d61636f73780000'],
 ]);

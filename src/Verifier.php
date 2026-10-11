@@ -41,25 +41,32 @@ final readonly class Verifier
     /** OID 1.2.840.113635.100.8.2, the App Attest nonce extension, as DER content bytes. */
     private const string NONCE_OID = "\x2A\x86\x48\x86\xF7\x63\x64\x08\x02";
 
+    /** OID 1.2.840.113635.100.8.7, the App Attest extension that names the platform, as DER content bytes. */
+    private const string PLATFORM_OID = "\x2A\x86\x48\x86\xF7\x63\x64\x08\x07";
+
+    /** The platform name that iPhone and iPad keys carry. */
+    private const string IOS_PLATFORM = 'iphoneos';
+
     private TrustAnchor $trustAnchor;
 
     /** @var list<ValidationCategory>|null */
     private ?array $allowedCategories;
 
     /**
-     * @param  list<ValidationCategory>|null  $allowedCategories  The categories to accept; a list also refuses
-     *                                                            a missing category. Null accepts every category that ValidationCategory
-     *                                                            names, and a missing one.
+     * @param  list<ValidationCategory>|null  $allowedCategories  Required. The categories to accept; a list also
+     *                                                            refuses a missing category. For production, list them (for example
+     *                                                            AppStore and TestFlight). Null accepts every category that
+     *                                                            ValidationCategory names, including Development, and a missing one.
      * @param  string|null  $trustAnchor  A PEM root certificate, for tests with your own test CA. Null uses the
      *                                    pinned Apple App Attestation Root CA. Never set it in production.
      *
      * @throws InvalidArgumentException When an argument is not valid.
-     * @throws RuntimeException On a 32-bit PHP build.
+     * @throws RuntimeException On a 32-bit PHP build, or when the package's root certificate file is missing.
      */
     public function __construct(
         private AppId $appId,
         private Environment $environment,
-        ?array $allowedCategories = null,
+        ?array $allowedCategories,
         ?string $trustAnchor = null,
     ) {
         if (PHP_INT_SIZE < 8) {
@@ -125,6 +132,15 @@ final readonly class Verifier
 
         if (! hash_equals(hash('sha256', $authData.$clientDataHash, true), Der::nonce($nonceExtension))) {
             throw self::fail(Failure::NonceMismatch, 'The nonce does not match the authenticator data and client data hash.');
+        }
+
+        // A key whose certificate names another platform, such as macOS, needs checks that this package does
+        // not make (the aclBlob extension), so it is refused. Certificates without the field are accepted.
+        $platformExtension = Der::extensionValue($credential['extensions'], self::PLATFORM_OID);
+        $platform = $platformExtension === null ? null : Der::platform($platformExtension);
+
+        if ($platform !== null && $platform !== self::IOS_PLATFORM) {
+            throw self::fail(Failure::UnsupportedPlatform, 'The key is from a platform other than iPhone and iPad.');
         }
 
         // 4. The key ID is SHA-256 of the public key as an X9.62 uncompressed point.
@@ -256,7 +272,7 @@ final readonly class Verifier
         $pem = is_file($path) && is_readable($path) ? file_get_contents($path) : false;
 
         if ($pem === false) {
-            throw new InvalidArgumentException('The Apple App Attestation Root CA file cannot be read.');
+            throw new RuntimeException('The package is incomplete: the Apple App Attestation Root CA file cannot be read.');
         }
 
         return $pem;
@@ -289,7 +305,8 @@ final readonly class Verifier
             throw self::fail(Failure::InvalidCertificate, 'The credential certificate does not have an EC P-256 key.');
         }
 
-        // OpenSSL returns the coordinates without leading zero bytes.
+        // A credential certificate always has a key; the checks guard against an OpenSSL build that cannot
+        // read it. OpenSSL returns the coordinates without leading zero bytes.
         $point = "\x04".str_pad($details['ec']['x'], 32, "\0", STR_PAD_LEFT).str_pad($details['ec']['y'], 32, "\0", STR_PAD_LEFT);
 
         return [$point, $details['key']];
@@ -309,6 +326,7 @@ final readonly class Verifier
 
     private static function checkSize(string $object, int $limit, string $name): void
     {
+        // Empty input would also fail to decode; the check names the problem directly.
         if ($object === '' || strlen($object) > $limit) {
             throw self::fail(Failure::MalformedInput, "The {$name} is empty or larger than {$limit} bytes.");
         }
