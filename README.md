@@ -151,9 +151,24 @@ The package empties OpenSSL's error queue (`openssl_error_string()`) after its c
 - The CBOR decoder accepts only definite-length integers, byte strings, text strings, arrays, and maps, with at most 8 levels and 64 entries per container. It accepts a length or integer in a longer form than needed, because the value is the same and the signed data is hashed as raw bytes.
 - macOS keys are not supported: on macOS the RP ID uses the signing identifier, and the `aclBlob` extension needs a check. Tests use iOS data.
 
+## Test your integration
+
+`AppAttest\Testing` makes real attestations and assertions without a device, so your own tests can run the whole flow. For tests only: never pass its root to a production verifier.
+
+```php
+use AppAttest\Testing\TestAuthority;
+
+$authority = TestAuthority::create();
+$device = $authority->device(new AppId('ABCDE12345', 'com.example.app'), Environment::Production, ValidationCategory::TestFlight);
+$verifier = new Verifier($appId, Environment::Production, trustAnchor: $authority->rootPem());
+
+$attestation = $device->attest(hash('sha256', $challenge, true)); // send with base64_encode($device->keyId)
+$assertion = $device->assert($clientData);                        // the counter increases with each call
+```
+
 ## Trust anchor
 
-`resources/apple-app-attestation-root-ca.pem` is Apple's App Attestation Root CA, valid until 2045-03-15. [spec/provenance.json](spec/provenance.json) records its source and hashes. The `trustAnchor` constructor argument is for tests with your own test CA; do not set it in production.
+`resources/apple-app-attestation-root-ca.pem` is Apple's App Attestation Root CA, valid until 2045-03-15. [spec/provenance.json](spec/provenance.json) records its source and hashes. The `trustAnchor` constructor argument is for tests with `AppAttest\Testing` or your own test CA; do not set it in production.
 
 ## Development
 

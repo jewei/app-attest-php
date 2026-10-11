@@ -14,3 +14,4 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   version extensions.
 - The pinned Apple App Attestation Root CA, with its provenance.
 - Apple's sample attestation and a real iOS 27 assertion as conformance fixtures.
+- `AppAttest\Testing\TestAuthority` and `TestDevice`, for tests of applications that use the verifier.
