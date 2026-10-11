@@ -70,3 +70,15 @@ it('refuses the sample under a different trust anchor', function (): void {
     expect(failureOf(fn () => $verifier->verifyAttestation($sample['attestation'], $sample['keyId'], $sample['clientDataHash'], $sample['at'])))
         ->toBe(Failure::InvalidCertificate);
 });
+
+it('accepts the sample from the first to the last second of its credential certificate', function (string $at, ?Failure $failure): void {
+    $sample = appleSample();
+
+    expect(failureOf(fn () => $sample['verifier']->verifyAttestation($sample['attestation'], $sample['keyId'], $sample['clientDataHash'], new \DateTimeImmutable($at))))
+        ->toBe($failure);
+})->with([
+    'one second before notBefore' => ['2026-04-20T18:13:11Z', Failure::InvalidCertificate],
+    'notBefore' => ['2026-04-20T18:13:12Z', null],
+    'notAfter' => ['2026-04-23T18:13:12Z', null],
+    'one second after notAfter' => ['2026-04-23T18:13:13Z', Failure::InvalidCertificate],
+]);

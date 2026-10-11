@@ -43,6 +43,8 @@ function certificateWith(
 
 it('reads short and long lengths', function (): void {
     expect(Der::element("\x04\x01A", 0, 3))->toBe(['tag' => 4, 'offset' => 0, 'start' => 2, 'end' => 3])
+        ->and(Der::element("\x04\x7F".str_repeat('A', 127), 0, 129))->toBe(['tag' => 4, 'offset' => 0, 'start' => 2, 'end' => 129])
+        ->and(Der::element("\x04\x84\x01\x00\x00\x00".str_repeat('A', 0x1000000), 0, 6 + 0x1000000)['end'])->toBe(6 + 0x1000000)
         ->and(Der::element("\x04\x81\x80".str_repeat('A', 128), 0, 131))->toBe(['tag' => 4, 'offset' => 0, 'start' => 3, 'end' => 131])
         ->and(Der::element("\x00\x04\x82\x01\x00".str_repeat('A', 256), 1, 261))->toBe(['tag' => 4, 'offset' => 1, 'start' => 5, 'end' => 261]);
 });
@@ -53,6 +55,9 @@ it('refuses lengths and tags outside DER', function (string $data): void {
     'empty' => [''],
     'one byte' => ["\x04"],
     'indefinite' => ["\x30\x80\x00\x00"],
+    'indefinite at the end' => ["\x30\x80"],
+    'indefinite before 128 bytes' => ["\x04\x80".str_repeat('A', 128)],
+    'long form for 127 bytes' => ["\x04\x81\x7F".str_repeat('A', 127)],
     'non-minimal long form' => ["\x04\x81\x05AAAAA"],
     'leading zero' => ["\x04\x82\x00\x80".str_repeat('A', 128)],
     'five length bytes' => ["\x04\x85\x01\x00\x00\x00\x00"],
@@ -65,6 +70,7 @@ it('stays inside the limit and the data', function (): void {
     expect(failureOf(fn () => Der::element("\x04\x03AAA", 0, 4)))->toBe(Failure::InvalidCertificate)
         ->and(failureOf(fn () => Der::element("\x04\x01A", 0, 9)))->toBe(Failure::InvalidCertificate)
         ->and(failureOf(fn () => Der::element("\x04\x01A", -1, 3)))->toBe(Failure::InvalidCertificate)
+        ->and(failureOf(fn () => Der::element("\x00\x04", -1, 2)))->toBe(Failure::InvalidCertificate)
         ->and(failureOf(fn () => Der::children("\x04\x01A\x04\x01B", 0, 5)))->toBe(Failure::InvalidCertificate);
 });
 
@@ -97,12 +103,16 @@ it('returns no extensions for a certificate without them', function (): void {
         ->and(Der::certificate(certificateWith(afterKey: "\x81\x02\x00\x01\x82\x02\x00\x01"))['extensions'])->toBe([]);
 });
 
-it('reads extensions after the unique IDs', function (): void {
-    $list = tlv(0xA3, tlv(0x30, extension("\x2A\x03", 'v')));
-
-    expect(Der::certificate(certificateWith(afterKey: "\x81\x02\x00\x01".$list))['extensions'])->toHaveCount(1)
-        ->and(Der::certificate(certificateWith(afterKey: "\x81\x02\x00\x01\x82\x02\x00\x01".$list))['extensions'])->toHaveCount(1);
-});
+it('reads the optional fields after the key in their RFC 5280 order', function (string $afterKey, int $extensions): void {
+    expect(Der::certificate(certificateWith(afterKey: $afterKey))['extensions'])->toHaveCount($extensions);
+})->with([
+    'issuer unique ID' => ["\x81\x02\x00\x01", 0],
+    'subject unique ID' => ["\x82\x02\x00\x01", 0],
+    'both unique IDs' => ["\x81\x02\x00\x01\x82\x02\x00\x01", 0],
+    'issuer unique ID and extensions' => ["\x81\x02\x00\x01".tlv(0xA3, tlv(0x30, extension("\x2A\x03", 'v'))), 1],
+    'subject unique ID and extensions' => ["\x82\x02\x00\x01".tlv(0xA3, tlv(0x30, extension("\x2A\x03", 'v'))), 1],
+    'both unique IDs and extensions' => ["\x81\x02\x00\x01\x82\x02\x00\x01".tlv(0xA3, tlv(0x30, extension("\x2A\x03", 'v'))), 1],
+]);
 
 it('refuses malformed certificates and extension lists', function (string $certificate): void {
     expect(failureOf(fn () => Der::certificate($certificate)))->toBe(Failure::InvalidCertificate);
@@ -111,6 +121,10 @@ it('refuses malformed certificates and extension lists', function (string $certi
     'two extension lists' => [certificateWith(afterKey: tlv(0xA3, tlv(0x30, '')).tlv(0xA3, tlv(0x30, '')))],
     'extensions before a unique ID' => [certificateWith(afterKey: tlv(0xA3, tlv(0x30, ''))."\x81\x02\x00\x01")],
     'unknown field after the key' => [certificateWith(afterKey: "\x05\x00")],
+    'unique IDs in the wrong order' => [certificateWith(afterKey: "\x82\x02\x00\x01\x81\x02\x00\x01")],
+    'a [0] tag after the key' => [certificateWith(afterKey: "\x80\x02\x00\x01")],
+    'only an OID' => [certificateWith([tlv(0x30, tlv(0x06, "\x2A\x03"))])],
+    'algorithm not a SEQUENCE' => [tlv(0x30, tlv(0x30, "\xA0\x03\x02\x01\x02")."\x05\x00\x03\x01\x00")],
     'list not a SEQUENCE' => [certificateWith(afterKey: tlv(0xA3, tlv(0x31, '')))],
     'two lists in the wrapper' => [certificateWith(afterKey: tlv(0xA3, tlv(0x30, '').tlv(0x30, '')))],
     'extension not a SEQUENCE' => [certificateWith([tlv(0x31, tlv(0x06, "\x2A\x03").tlv(0x04, 'a'))])],
@@ -187,7 +201,11 @@ it('decodes basicConstraints', function (string $value, array $expected): void {
     'empty: not a CA' => ["\x30\x00", ['ca' => false, 'pathLength' => null]],
     'CA' => ["\x30\x03\x01\x01\xFF", ['ca' => true, 'pathLength' => null]],
     'CA with path length 0' => ["\x30\x06\x01\x01\xFF\x02\x01\x00", ['ca' => true, 'pathLength' => 0]],
+    'CA with path length 127' => ["\x30\x06\x01\x01\xFF\x02\x01\x7F", ['ca' => true, 'pathLength' => 127]],
+    'CA with path length 128' => ["\x30\x07\x01\x01\xFF\x02\x02\x00\x80", ['ca' => true, 'pathLength' => 128]],
     'CA with path length 200' => ["\x30\x07\x01\x01\xFF\x02\x02\x00\xC8", ['ca' => true, 'pathLength' => 200]],
+    'CA with path length 258' => ["\x30\x07\x01\x01\xFF\x02\x02\x01\x02", ['ca' => true, 'pathLength' => 258]],
+    'CA with path length 32767' => ["\x30\x07\x01\x01\xFF\x02\x02\x7F\xFF", ['ca' => true, 'pathLength' => 32767]],
     'explicit false' => ["\x30\x03\x01\x01\x00", ['ca' => false, 'pathLength' => null]],
 ]);
 
@@ -199,6 +217,9 @@ it('refuses malformed basicConstraints', function (string $value): void {
     'BOOLEAN 0x01' => ["\x30\x03\x01\x01\x01"],
     'negative path length' => ["\x30\x06\x01\x01\xFF\x02\x01\xFF"],
     'non-minimal path length' => ["\x30\x07\x01\x01\xFF\x02\x02\x00\x05"],
+    'non-minimal path length 127' => ["\x30\x07\x01\x01\xFF\x02\x02\x00\x7F"],
+    'negative path length 0x80' => ["\x30\x06\x01\x01\xFF\x02\x01\x80"],
+    'negative two-byte path length' => ["\x30\x07\x01\x01\xFF\x02\x02\x80\x00"],
     'path length of three bytes' => ["\x30\x08\x01\x01\xFF\x02\x03\x01\x00\x00"],
     'empty path length' => ["\x30\x05\x01\x01\xFF\x02\x00"],
     'path length before the flag' => ["\x30\x06\x02\x01\x00\x01\x01\xFF"],
@@ -212,6 +233,9 @@ it('reads keyCertSign from keyUsage', function (string $value, bool $expected): 
     'keyCertSign and cRLSign' => ["\x03\x02\x01\x06", true],
     'keyCertSign only' => ["\x03\x02\x02\x04", true],
     'digitalSignature' => ["\x03\x02\x07\x80", false],
+    'encipherOnly' => ["\x03\x02\x00\x01", false],
+    'cRLSign only' => ["\x03\x02\x01\x02", false],
+    'every bit but keyCertSign' => ["\x03\x02\x00\xFB", false],
     'Apple credential usage' => ["\x03\x02\x04\xF0", false],
     'two bytes with decipherOnly' => ["\x03\x03\x07\x04\x80", true],
 ]);

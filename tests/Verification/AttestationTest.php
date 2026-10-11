@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AppAttest\AppId;
 use AppAttest\Environment;
 use AppAttest\Exception\Failure;
+use AppAttest\Exception\VerificationException;
 use AppAttest\Tests\Support\AttestationObject;
 use AppAttest\Tests\Support\Bytes;
 use AppAttest\Tests\Support\CborEncoder;
@@ -292,6 +293,9 @@ it('refuses an object that is not Apple\'s structure', function (\Closure $mutat
     'short authData' => [static function (AttestationObject $object): void {
         $object->authData = new Bytes(substr($object->authDataBytes(), 0, 36));
     }],
+    'authData cut one byte before the credential ID length ends' => [static function (AttestationObject $object): void {
+        $object->authData = new Bytes(substr($object->authDataBytes(), 0, 37 + 17));
+    }],
     'authData cut in the AAGUID' => [static function (AttestationObject $object): void {
         $object->authData = new Bytes(substr($object->authDataBytes(), 0, 45));
     }],
@@ -339,6 +343,8 @@ it('applies the validation category policy', function (mixed $category, ?array $
     'unknown 11' => [new Bytes("\x0B\0\0\0"), null, Failure::CategoryNotAllowed],
     'big-endian 2' => [new Bytes("\0\0\0\x02"), null, Failure::CategoryNotAllowed],
     'integer 4' => [4, [ValidationCategory::AppStore], null],
+    'integer 0' => [0, null, Failure::CategoryNotAllowed],
+    'integer 2^32 - 1' => [0xFFFFFFFF, null, Failure::CategoryNotAllowed],
     'absent, any' => ['absent', null, null],
     'absent, list' => ['absent', [ValidationCategory::TestFlight], Failure::CategoryNotAllowed],
 ]);
@@ -420,3 +426,12 @@ it('leaves OpenSSL\'s error queue empty', function (array $options): void {
         $object->x5c[0] = new Bytes("\x30\x03\x02\x01\x01");
     }]],
 ]);
+
+it('names the expected keys when the structure is wrong', function (): void {
+    $attestation = testAttestation(['mutate' => static function (AttestationObject $object): void {
+        $object->extraFields = ['extra' => 1];
+    }]);
+
+    expect(fn () => testVerifier()->verifyAttestation($attestation['attestation'], $attestation['keyId'], testClientDataHash()))
+        ->toThrow(VerificationException::class, 'The attestation object is not a map with exactly the keys fmt, attStmt, authData.');
+});

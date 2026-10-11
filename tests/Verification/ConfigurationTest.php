@@ -27,6 +27,10 @@ it('refuses a bundle ID with other characters', function (string $bundleId): voi
     expect(fn () => new AppId('ABCDE12345', $bundleId))->toThrow(\InvalidArgumentException::class);
 })->with(['', '.com.example', 'com.example.', 'com..example', 'com.exa mple', 'com.example_app', "com.example\n", str_repeat('a', 256)]);
 
+it('accepts a bundle ID of 255 characters', function (): void {
+    expect((new AppId('ABCDE12345', str_repeat('a', 255)))->bundleId)->toHaveLength(255);
+});
+
 it('refuses an App ID string without a period', function (): void {
     expect(fn () => AppId::fromString('ABCDE12345'))->toThrow(\InvalidArgumentException::class);
 });
@@ -86,4 +90,12 @@ it('keeps the failure codes stable', function (): void {
 it('names Apple\'s validation categories', function (): void {
     expect(array_map(static fn (ValidationCategory $category): int => $category->value, ValidationCategory::cases()))
         ->toBe([1, 2, 3, 4, 5, 6, 10]);
+});
+
+it('leaves no PHP error behind when OpenSSL refuses input', function (): void {
+    error_clear_last();
+
+    expect(fn () => new Verifier(testAppId(), Environment::Production, trustAnchor: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"))
+        ->toThrow(\InvalidArgumentException::class)
+        ->and(error_get_last())->toBeNull();
 });

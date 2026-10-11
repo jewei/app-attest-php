@@ -202,3 +202,10 @@ it('leaves OpenSSL\'s error queue empty', function (array $options): void {
     'valid' => [[]],
     'junk signature' => [['signature' => 'junk']],
 ]);
+
+it('reads the counter as a big-endian 32-bit integer', function (): void {
+    $key = attestedKey();
+    $assertion = TestAuthority::assertion($key['key'], testAppId(), 'GET /me', 0x01020304);
+
+    expect(testVerifier()->verifyAssertion($assertion, 'GET /me', $key['publicKey'], 0x01020303, Environment::Production)->counter)->toBe(0x01020304);
+});

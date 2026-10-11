@@ -154,3 +154,17 @@ it('checks a map with exactly the given keys', function (): void {
         ->and($map->get('a'))->toBe(1)
         ->and($map->get('missing'))->toBeNull();
 });
+
+it('limits the nesting depth of maps, keys, and decoded prefixes', function (): void {
+    $maps = static fn (int $levels): string => str_repeat("\xA1\x00", $levels)."\x00";
+    $arrays = static fn (int $levels): string => str_repeat("\x81", $levels)."\x00";
+
+    expect(Cbor::decode($maps(Cbor::MAX_DEPTH - 1)))->toBeInstanceOf(CborMap::class)
+        ->and(failureOf(fn () => Cbor::decode($maps(Cbor::MAX_DEPTH))))->toBe(Failure::MalformedInput)
+        ->and(Cbor::decodePrefix($arrays(Cbor::MAX_DEPTH - 1), 0)[1])->toBe(Cbor::MAX_DEPTH)
+        ->and(failureOf(fn () => Cbor::decodePrefix($arrays(Cbor::MAX_DEPTH), 0)))->toBe(Failure::MalformedInput);
+});
+
+it('decodes a prefix at offset 0', function (): void {
+    expect(Cbor::decodePrefix("\x05\x06", 0))->toBe([5, 1]);
+});
