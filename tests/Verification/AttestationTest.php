@@ -546,6 +546,7 @@ it('names the reason for each platform refusal', function (string $lines, string
     'another platform' => [TestAuthority::platformExtension('xros'), '"xros"'],
     'the macOS blob' => [TestAuthority::aclExtension((string) base64_decode('MEAMAjExMDowCQwCb2uhAwEB/zAJDAJvYaEDAQH/MAsMBG9kZWyhAwEB/zAVDARvc2duoAYMBHJzZWMwBaYDAgEB', true)), 'macOS access-control blob'],
     'a blob alone' => [TestAuthority::aclExtension('an iOS policy'), 'no platform extension'],
+    'a blob and a platform extension without the field' => [TestAuthority::aclExtension('an iOS policy')."\n".TestAuthority::platformFields("\xBF\x8A\x78\x02\x04\x00"), 'layout may have changed'],
 ]);
 
 it('verifies a real-device shaped attestation: ED set with extensions, and returns the category', function (): void {

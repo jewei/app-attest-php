@@ -26,7 +26,7 @@ $verifier = new Verifier(
 );
 ```
 
-The [category policy](#validation-categories) is required. Devices write the category from iOS 27; iOS 26 and earlier write none (Apple, WWDC26 session 201). `onlyOrMissing()` accepts those devices without a category check. If your app needs iOS 27 or later, use the stricter `only()`, which refuses a device that writes no category, at attestation and at every assertion.
+The [category policy](#validation-categories) is required. Devices write the category from iOS 27; iOS 26 and earlier write none (Apple, WWDC26 session 201). `onlyOrMissing()` accepts those devices without a category check. If your app needs iOS 27 or later, use the stricter `only()`, which refuses a device that writes no category at every assertion. At attestation the category is a hint: see [Validation categories](#validation-categories).
 
 For an App Clip, use the full app's bundle ID: Apple builds the App Clip's RP ID from it. Write the bundle ID in the exact case of the app's entitlement: the RP ID hash is case-sensitive.
 
@@ -56,7 +56,8 @@ try {
     return refuse();
 }
 
-// Store for this device: $key->keyId, $key->publicKey (PEM), $key->environment->value, counter 0, and, if you use
+// Store for this device (keyId, receipt, and certificate are raw bytes: use a binary column or Base64):
+// $key->keyId, $key->publicKey (PEM), $key->environment->value, counter 0, and, if you use
 // the fraud metric, $key->receipt (unverified: see below) and $key->certificate (each new receipt's field 3 must equal it).
 ```
 

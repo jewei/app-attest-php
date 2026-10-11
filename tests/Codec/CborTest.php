@@ -173,3 +173,8 @@ it('limits the nesting depth of maps, keys, and decoded prefixes', function (): 
 it('decodes a prefix at offset 0', function (): void {
     expect(Cbor::decodePrefix("\x05\x06", 0))->toBe([5, 1]);
 });
+
+it('keeps the documented CBOR limits', function (): void {
+    expect(Cbor::MAX_DEPTH)->toBe(8)
+        ->and(Cbor::MAX_ITEMS)->toBe(64);
+});

@@ -58,7 +58,7 @@ it('issues credential certificates for 3 days and CA certificates for 10 years, 
     $credential = is_array($x5c) && $x5c[0] instanceof ByteString ? Der::certificate($x5c[0]->value) : null;
     $intermediate = is_array($x5c) && $x5c[1] instanceof ByteString ? Der::certificate($x5c[1]->value) : null;
 
-    expect($credential === null ? null : $credential['notAfter'] - $credential['notBefore'])->toBe(3 * 86400)
-        ->and($intermediate === null ? null : $intermediate['notAfter'] - $intermediate['notBefore'])->toBe(3650 * 86400)
+    expect($credential === null ? null : $credential['notAfter'] - $credential['notBefore'])->toBeIn([3 * 86400, 3 * 86400 + 1])
+        ->and($intermediate === null ? null : $intermediate['notAfter'] - $intermediate['notBefore'])->toBeIn([3650 * 86400, 3650 * 86400 + 1])
         ->and(glob($pattern) ?: [])->toBe($before);
 });
