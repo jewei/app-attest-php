@@ -1,0 +1,58 @@
+name: tests
+
+on:
+  push:
+    paths-ignore:
+      - 'CHANGELOG.md'
+      - 'LICENSE'
+  pull_request:
+    paths-ignore:
+      - 'CHANGELOG.md'
+      - 'LICENSE'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '8.3'
+            dependencies: lowest
+          - php: '8.3'
+            dependencies: highest
+          - php: '8.4'
+            dependencies: highest
+          - php: '8.5'
+            dependencies: highest
+
+    name: PHP ${{ matrix.php }} / ${{ matrix.dependencies }}
+    uses: ./.github/workflows/php-check.yml
+    with:
+      php-version: ${{ matrix.php }}
+      dependencies: ${{ matrix.dependencies }}
+      check: tests
+
+  static-analysis:
+    name: Static analysis
+    uses: ./.github/workflows/php-check.yml
+    with:
+      php-version: '8.3'
+      check: static-analysis
+
+  coverage:
+    name: Code coverage
+    uses: ./.github/workflows/php-check.yml
+    with:
+      php-version: '8.5'
+      coverage: pcov
+      check: coverage
+
+  style:
+    name: Code style
+    uses: ./.github/workflows/php-check.yml
+    with:
+      php-version: '8.5'
+      check: style
