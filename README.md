@@ -54,7 +54,8 @@ try {
     return refuse();
 }
 
-// Store for this device: $key->keyId, $key->publicKey (PEM), $key->environment, counter 0, and $key->receipt.
+// Store for this device: $key->keyId, $key->publicKey (PEM), $key->environment, counter 0, and $key->receipt
+// (unverified: see below).
 ```
 
 ## Verify an assertion
@@ -87,7 +88,7 @@ The package checks the cryptography and the data. Your server must also:
 - Store each key's environment with it, and pass it back as `keyEnvironment`. Build the verifier's environment from your server configuration, never from the stored key, so that a development key cannot pass a production verifier.
 - Refuse a key ID that another account already uses.
 - Check `bundleVersion` if you need a minimum app version. The package returns it and does not compare versions.
-- Verify the receipt and request the fraud risk metric yourself, if you use it. The package returns the receipt bytes and does not check them.
+- Verify the receipt and request the fraud risk metric yourself, if you use it. The package returns the receipt bytes and does not check them. The attestation does not sign the receipt, so an attacker can put in the receipt of another key: before you store or use it, verify its Apple signature and that its App ID and public key match this key.
 
 ## Checks
 
@@ -124,6 +125,8 @@ Apple's current documentation adds `apple_validation_category_01` (how the app w
 The verifier always refuses 0 (invalid), 7 to 9 (not appropriate for apps), and values that `ValidationCategory` does not name yet.
 
 The app chooses the client data hash, and nothing in the signed bytes marks where the authenticator data ends. In an assertion the ED flag closes that gap. Apple's attestations do not set the ED flag, so on a device that writes no extensions, a modified app can make an attestation carry any category. The verifier checks the policy again on every assertion, where it cannot be forged, so base your decisions on assertions; treat the attestation's category and bundle version as a hint.
+
+Apple does not document the ED flag of assertions. The rule above follows a real iOS 27 assertion (flags `0xC0` with extensions). If every assertion from one OS version fails with `malformed_input`, that version writes extensions without the flag: please open an issue with a sample.
 
 ## Failures
 
@@ -174,7 +177,7 @@ $attestation = $device->attest(hash('sha256', $challenge, true)); // send with b
 $assertion = $device->assert($clientData);                        // the counter increases with each call
 ```
 
-The test certificates are valid for 3 days from `TestAuthority::create()` and `attest()`. A test that freezes the clock must keep it inside that window, or pass the time to `verifyAttestation()`.
+The test root and intermediate are valid for 10 years from `TestAuthority::create()`; each credential certificate is valid for 3 days from `attest()`. A test that freezes the clock must keep it inside that window, or pass the time to `verifyAttestation()`.
 
 ## Trust anchor
 

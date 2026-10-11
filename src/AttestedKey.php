@@ -17,7 +17,10 @@ final readonly class AttestedKey
         public string $keyId,
         /** The public key as a PEM SubjectPublicKeyInfo. */
         public string $publicKey,
-        /** The receipt for Apple's fraud risk metric (raw bytes). */
+        /**
+         * The receipt for Apple's fraud risk metric (raw bytes). Not verified: the attestation does not sign it, so
+         * check its Apple signature, App ID, and public key before you store or use it.
+         */
         public string $receipt,
         public Environment $environment,
         /**

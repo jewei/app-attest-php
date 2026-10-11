@@ -5,6 +5,7 @@
 ## Rules
 
 - Runtime dependencies: PHP `^8.3` and `ext-openssl` only. Ask the owner before you add a package.
+- The namespace is `AppAttest\` on purpose, like `TypeID\` in `jewei/typeid-php`. Do not rename it after the first release.
 - `AppAttest\Internal` is not public API. Only `src/` and `tests/Codec/` may use it (`composer test:architecture`).
 - Device data fails with `VerificationException` and a `Failure`; server arguments fail with `InvalidArgumentException`. No other exception, warning, or notice may escape for any input.
 - Do not change `Failure` values: applications log them.

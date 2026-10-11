@@ -11,9 +11,10 @@ use AppAttest\Exception\VerificationException;
  * @internal A strict decoder for the CBOR (RFC 8949) subset that App Attest uses.
  *
  * It accepts unsigned and negative integers, byte strings, UTF-8 text strings,
- * arrays, maps, false, true, and null, all with definite lengths. Apple may add
- * authenticator data extensions with such values, and an unknown extension must
- * not refuse every key. It refuses tags, floats, other simple values,
+ * arrays, maps, false, true, and null, all with definite lengths, so that an
+ * unknown extension with such values does not refuse every key. An extension
+ * with a tag or a float would refuse every key; Apple uses neither (accepted
+ * risk: it fails closed). It refuses tags, floats, other simple values,
  * indefinite lengths, integers outside the 64-bit PHP int range,
  * duplicate or non-scalar map keys, deep nesting, and large containers. Each
  * length is checked against the remaining input before any data is read.
