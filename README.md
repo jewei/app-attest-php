@@ -174,9 +174,11 @@ $attestation = $device->attest(hash('sha256', $challenge, true)); // send with b
 $assertion = $device->assert($clientData);                        // the counter increases with each call
 ```
 
+The test certificates are valid for 3 days from `TestAuthority::create()` and `attest()`. A test that freezes the clock must keep it inside that window, or pass the time to `verifyAttestation()`.
+
 ## Trust anchor
 
-`resources/apple-app-attestation-root-ca.pem` is Apple's App Attestation Root CA, valid until 2045-03-15. [spec/provenance.json](spec/provenance.json) records its source and hashes. The `trustAnchor` constructor argument is for tests with `AppAttest\Testing` or your own test CA; do not set it in production.
+`resources/apple-app-attestation-root-ca.pem` is Apple's App Attestation Root CA, valid until 2045-03-15. [spec/provenance.json](https://github.com/jewei/app-attest-php/blob/main/spec/provenance.json) records its source and hashes. The `trustAnchor` constructor argument is for tests with `AppAttest\Testing` or your own test CA; do not set it in production.
 
 ## Development
 
@@ -188,4 +190,4 @@ vendor/bin/pint --test
 
 ## License
 
-MIT. See [LICENSE](LICENSE). [spec/third-party](spec/third-party) has a test fixture under the Apache License 2.0.
+MIT. See [LICENSE](LICENSE). [spec/third-party](https://github.com/jewei/app-attest-php/tree/main/spec/third-party) has a test fixture under the Apache License 2.0.

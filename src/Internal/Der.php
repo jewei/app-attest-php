@@ -249,7 +249,8 @@ final class Der
     /**
      * Returns the text of the platform field ([1026], for example "iphoneos") in the App Attest extension
      * 1.2.840.113635.100.8.7, or null when the field is absent. The extension is a SEQUENCE of context-specific
-     * fields, many with multi-byte tag numbers, which element() refuses elsewhere. Other fields are skipped.
+     * fields, many with multi-byte tag numbers, which element() refuses elsewhere. Other context-specific fields are
+     * skipped; a field of another class is refused.
      */
     public static function platform(string $value): ?string
     {
