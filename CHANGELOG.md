@@ -13,4 +13,4 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Apple's server validation steps, with the validation category and bundle
   version extensions.
 - The pinned Apple App Attestation Root CA, with its provenance.
-- Apple's sample attestation as a conformance fixture.
+- Apple's sample attestation and a real iOS 27 assertion as conformance fixtures.

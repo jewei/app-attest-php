@@ -9,8 +9,8 @@
 - Device data fails with `VerificationException` and a `Failure`; server arguments fail with `InvalidArgumentException`. No other exception, warning, or notice may escape for any input.
 - Do not change `Failure` values: applications log them.
 - Do not change the pinned root or the fixtures in `spec/` without updating `spec/provenance.json` and recording the source.
-- Each check in `Verifier` has a test that breaks only that check.
+- Each verification step and each certificate check has a test that breaks only that check. A defensive guard that another check always covers may stay untested; say so in a comment.
 
 ## Checks
 
-Run before you hand off: `composer test` and `vendor/bin/pint --test`. Mutation tests run in CI (`composer test:mutation` needs pcov or Xdebug).
+Run before you hand off: `composer test` and `vendor/bin/pint --test`. Mutation tests and coverage need pcov or Xdebug; they run in CI, or locally in a `php:8.3-cli` container.
