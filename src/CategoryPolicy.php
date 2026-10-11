@@ -29,8 +29,9 @@ final readonly class CategoryPolicy
     }
 
     /**
-     * Every category that ValidationCategory names, including Development and DeveloperId, and a missing one.
-     * A package upgrade that names a new category widens this policy.
+     * Every category that ValidationCategory names, and a missing one: also OperatingSystem and Other, which point to
+     * code that Apple did not sign for distribution (for example a re-signed app). For tests and diagnostics; use
+     * only() in production. A package upgrade that names a new category widens this policy.
      */
     public static function any(): self
     {

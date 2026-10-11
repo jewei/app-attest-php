@@ -48,7 +48,7 @@ A 32-bit counter in the authenticator data. It is 0 in an attestation and increa
 
 ### Validation category
 
-The `apple_validation_category_01` extension: how the app was distributed, for example TestFlight or the App Store. Apple writes it as 4 little-endian bytes.
+The `apple_validation_category_01` extension: how the app's code is signed, for example for TestFlight or the App Store. Apple writes it as 4 little-endian bytes.
 
 ### Receipt
 

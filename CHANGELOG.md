@@ -19,4 +19,5 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Apple's sample attestation and a real iOS 27 assertion as conformance fixtures.
 - `AppAttest\Testing\TestAuthority` and `TestDevice`, for tests of applications that use the verifier.
 - `CategoryPolicy::only()`, `onlyOrMissing()`, and `any()` for the validation category.
+- `SECURITY.md`: private vulnerability reports.
 - `Failure::UnsupportedPlatform` for keys whose certificate names a platform other than `iphoneos`, or carries Apple's macOS access-control blob.

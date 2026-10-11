@@ -58,6 +58,8 @@ try {
 // (unverified: see below).
 ```
 
+Apple's credential certificate is valid from the second that Apple issued it. Keep the server clock in sync (NTP): a server clock that is behind Apple's refuses a fresh attestation with `invalid_certificate`.
+
 ## Verify an assertion
 
 The app signs each request with `generateAssertion(_:clientDataHash:)`, where `clientDataHash` is `SHA256(clientData)`. Rebuild `clientData` on the server from the request and your one-time challenge.
@@ -114,19 +116,19 @@ The package checks the cryptography and the data. Your server must also:
 
 ## Validation categories
 
-Apple's current documentation adds `apple_validation_category_01` (how the app was distributed) and `apple_bundle_version_01` to the authenticator data. (Its assertion steps call them `validationCategory` and `bundleVersion`; the real assertion in `spec/` uses the `_01` keys, so the package reads those.) Apple's sample attestation and the real iOS 27 assertion in `spec/` have both; devices on older iOS versions may not write them. Both results expose them as `validationCategory` (a `ValidationCategory`, or null) and `bundleVersion` (a string, or null).
+Apple's current documentation adds `apple_validation_category_01` (how the app's code is signed) and `apple_bundle_version_01` to the authenticator data. (Its assertion steps call them `validationCategory` and `bundleVersion`; the real assertion in `spec/` uses the `_01` keys, so the package reads those.) Apple's sample attestation and the real iOS 27 assertion in `spec/` have both; devices on older iOS versions may not write them. Both results expose them as `validationCategory` (a `ValidationCategory`, or null) and `bundleVersion` (a string, or null).
 
 | Policy | Result |
 | --- | --- |
 | `CategoryPolicy::only(...)` | Only the listed categories. A missing category fails, so devices that do not write one are refused. |
 | `CategoryPolicy::onlyOrMissing(...)` | The listed categories, or none (devices on older iOS versions). |
-| `CategoryPolicy::any()` | Every category that `ValidationCategory` names, including `Development` and `DeveloperId`, and a missing one. |
+| `CategoryPolicy::any()` | Every category that `ValidationCategory` names, and a missing one: also `OperatingSystem` (1) and `Other` (10), which point to code that Apple did not sign for distribution to you, such as a re-signed or sideloaded app. For tests and diagnostics, not production. |
 
-The verifier always refuses 0 (invalid), 7 to 9 (not appropriate for apps), and values that `ValidationCategory` does not name yet.
+A third-party app that Apple distributes reports `AppStore` or `TestFlight`, and a build from Xcode reports `Development`. The verifier always refuses 0 (invalid), 7 to 9 (Apple: binaries that the system generates in restricted situations, not appropriate), and values that `ValidationCategory` does not name yet.
 
 The app chooses the client data hash, and nothing in the signed bytes marks where the authenticator data ends. In an assertion the ED flag closes that gap. Apple's attestations do not set the ED flag, so on a device that writes no extensions, a modified app can make an attestation carry any category. The verifier checks the policy again on every assertion, where it cannot be forged, so base your decisions on assertions; treat the attestation's category and bundle version as a hint.
 
-Apple does not document the ED flag of assertions. The rule above follows a real iOS 27 assertion (flags `0xC0` with extensions). If every assertion from one OS version fails with `malformed_input`, that version writes extensions without the flag: please [open an issue](https://github.com/jewei/app-attest-php/issues) with a sample.
+Apple does not document the ED flag of assertions. The rule above follows a real iOS 27 assertion (flags `0xC0` with extensions). If every assertion from one OS version fails with `malformed_input`, that version writes extensions without the flag: please [open an issue](https://github.com/jewei/app-attest-php/issues) with a sample. Remove user and session values from the client data first, or send the sample privately (see [SECURITY.md](SECURITY.md)).
 
 ## Failures
 

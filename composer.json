@@ -15,7 +15,8 @@
     "homepage": "https://github.com/jewei/app-attest-php",
     "support": {
         "issues": "https://github.com/jewei/app-attest-php/issues",
-        "source": "https://github.com/jewei/app-attest-php"
+        "source": "https://github.com/jewei/app-attest-php",
+        "security": "https://github.com/jewei/app-attest-php/security/policy"
     },
     "require": {
         "php": "^8.3.0",

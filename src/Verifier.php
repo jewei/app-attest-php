@@ -70,6 +70,7 @@ final readonly class Verifier
         private CategoryPolicy $categories,
         ?string $trustAnchor = null,
     ) {
+        // Untested: Composer's php-64bit requirement already refuses 32-bit builds.
         if (PHP_INT_SIZE < 8) {
             throw new RuntimeException('App Attest verification needs a 64-bit PHP build.');
         }
@@ -249,6 +250,7 @@ final readonly class Verifier
         $path = dirname(__DIR__).'/resources/apple-app-attestation-root-ca.pem';
         $pem = is_file($path) && is_readable($path) ? file_get_contents($path) : false;
 
+        // Untested: only an incomplete install reaches this.
         if ($pem === false) {
             throw new RuntimeException('The package is incomplete: the Apple App Attestation Root CA file cannot be read.');
         }
