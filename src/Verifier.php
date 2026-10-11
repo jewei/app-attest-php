@@ -47,6 +47,12 @@ final readonly class Verifier
     /** The platform name that iPhone and iPad keys carry. */
     private const string IOS_PLATFORM = 'iphoneos';
 
+    /** OID 1.2.840.113635.100.8.6, the key's access-control (aclBlob) extension, as DER content bytes. */
+    private const string ACL_OID = "\x2A\x86\x48\x86\xF7\x63\x64\x08\x06";
+
+    /** The aclBlob that Apple documents for macOS keys (Base64), which only macOS writes. */
+    private const string MACOS_ACL = 'MEAMAjExMDowCQwCb2uhAwEB/zAJDAJvYaEDAQH/MAsMBG9kZWyhAwEB/zAVDARvc2duoAYMBHJzZWMwBaYDAgEB';
+
     private TrustAnchor $trustAnchor;
 
     /** @var list<ValidationCategory>|null */
@@ -139,7 +145,10 @@ final readonly class Verifier
         $platformExtension = Der::extensionValue($credential['extensions'], self::PLATFORM_OID);
         $platform = $platformExtension === null ? null : Der::platform($platformExtension);
 
-        if ($platform !== null && $platform !== self::IOS_PLATFORM) {
+        $acl = Der::extensionValue($credential['extensions'], self::ACL_OID);
+        $macAcl = (string) base64_decode(self::MACOS_ACL, true);
+
+        if (($platform !== null && $platform !== self::IOS_PLATFORM) || ($acl !== null && str_contains($acl, $macAcl))) {
             throw self::fail(Failure::UnsupportedPlatform, 'The key is from a platform other than iPhone and iPad.');
         }
 
@@ -280,9 +289,10 @@ final readonly class Verifier
 
     private static function publicKey(string $pem): OpenSSLAsymmetricKey
     {
-        // The prefix check also stops OpenSSL from reading a "file://" path.
-        if (! str_starts_with($pem, '-----BEGIN PUBLIC KEY-----')) {
-            throw new InvalidArgumentException('The public key must be a PEM SubjectPublicKeyInfo.');
+        // Exactly one PUBLIC KEY block: OpenSSL would read a "file://" path, and it reads a certificate in the
+        // same string before the key.
+        if (preg_match('~\A-----BEGIN PUBLIC KEY-----\r?\n[A-Za-z0-9+/=\r\n]+-----END PUBLIC KEY-----\r?\n?\z~', $pem) !== 1) {
+            throw new InvalidArgumentException('The public key must be one PEM SubjectPublicKeyInfo block.');
         }
 
         $key = OpenSsl::quietly(static fn (): OpenSSLAsymmetricKey|false => openssl_pkey_get_public($pem));

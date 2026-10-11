@@ -53,3 +53,12 @@ it('refuses a replayed assertion because the counter does not increase', functio
     expect(failureOf(fn () => $verifier->verifyAssertion($assertion, 'GET /me', $key->publicKey, $counter, Environment::Production)))
         ->toBe(Failure::CounterNotIncreased);
 });
+
+it('refuses test inputs that the verifier could not read', function (\Closure $call): void {
+    expect($call)->toThrow(\InvalidArgumentException::class);
+})->with([
+    'a bundle version that is not UTF-8' => [fn () => TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'), bundleVersion: "\xFF\xFE")],
+    'an empty bundle version' => [fn () => TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'), bundleVersion: '')],
+    'a 33-byte key ID' => [fn () => TestAuthority::create()->issue(openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']) ?: throw new \RuntimeException, str_repeat('k', 33), str_repeat('n', 32))],
+    'a 31-byte nonce' => [fn () => TestAuthority::create()->issue(openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']) ?: throw new \RuntimeException, str_repeat('k', 32), str_repeat('n', 31))],
+]);

@@ -13,9 +13,17 @@ use AppAttest\Exception\VerificationException;
  * Layout: RP ID hash (32 bytes), flags (1), counter (4, big-endian). An
  * attestation adds the AAGUID (16), the credential ID length (2), the
  * credential ID, and the COSE public key. Both may end with a CBOR map of
- * extensions. Apple's sample attestation has extensions without the ED flag
- * (flags 0x40), and real assertions set it (0xC0), so the parser ignores the
- * flags and reads the extensions whenever bytes remain.
+ * extensions.
+ *
+ * Nothing in the signed bytes marks where authenticator data ends and the
+ * client data hash begins, and the app chooses the client data hash. So bytes
+ * after the fixed fields could be client data hash bytes that the app moved
+ * there. In an assertion, the ED flag (0x80) is in the fixed part, and real
+ * assertions with extensions set it (0xC0): extensions are read only with it,
+ * and other trailing bytes are refused. Apple's attestations write extensions
+ * without the ED flag (Apple's sample: 0x40), so an attestation's extensions
+ * are read whenever bytes remain, and they are only as trustworthy as the app
+ * that sent them.
  */
 final readonly class AuthenticatorData
 {
@@ -55,6 +63,10 @@ final readonly class AuthenticatorData
     /** Parses the authenticator data of an assertion. */
     public static function assertion(string $data): self
     {
+        if (strlen($data) > 37 && (ord($data[32]) & 0x80) === 0) {
+            throw self::malformed('The assertion has bytes after the counter but no ED flag.');
+        }
+
         return self::create($data, 37, '', '');
     }
 

@@ -124,6 +124,11 @@ final class Der
             throw self::invalid('A certificate is not version 3.');
         }
 
+        // RFC 5280, section 4.1.1.2: the outer algorithm, which the signature does not cover, equals the signed one.
+        if (self::raw($certificate, $parts[1]) !== self::raw($certificate, $fields[2])) {
+            throw self::invalid('A certificate\'s signature algorithm differs from its signed algorithm.');
+        }
+
         if (! in_array(array_slice($tags, 7), [[], [0xA3], [0x81, 0xA3], [0x82, 0xA3], [0x81, 0x82, 0xA3], [0x81], [0x82], [0x81, 0x82]], true)) {
             throw self::invalid('A certificate has unexpected fields after the public key.');
         }
@@ -208,9 +213,12 @@ final class Der
             throw self::invalid('keyUsage is not a non-empty BIT STRING.');
         }
 
-        // DER sets the unused bits of the last byte to zero (X.690, section 11.2.1).
-        if ((ord($value[$bits['end'] - 1]) & ((1 << $unused) - 1)) !== 0) {
-            throw self::invalid('keyUsage has bits set in its unused bits.');
+        $last = ord($value[$bits['end'] - 1]);
+
+        // DER sets the unused bits to zero (X.690, section 11.2.1) and removes trailing zero named bits
+        // (section 11.2.2), so the last named bit is set.
+        if (($last & ((1 << $unused) - 1)) !== 0 || (($last >> $unused) & 1) !== 1) {
+            throw self::invalid('keyUsage is not minimal DER: unused bits are set or named bits trail as zeros.');
         }
 
         return (ord($value[$bits['start'] + 1]) & 0x04) !== 0;
@@ -240,8 +248,8 @@ final class Der
 
     /**
      * Returns the text of the platform field ([1026], for example "iphoneos") in the App Attest extension
-     * 1.2.840.113635.100.8.7, or null when the field is absent. The extension is a SEQUENCE of explicitly
-     * tagged fields with multi-byte tag numbers, which element() refuses elsewhere.
+     * 1.2.840.113635.100.8.7, or null when the field is absent. The extension is a SEQUENCE of context-specific
+     * fields, many with multi-byte tag numbers, which element() refuses elsewhere. Other fields are skipped.
      */
     public static function platform(string $value): ?string
     {
@@ -249,23 +257,35 @@ final class Der
         $fields = [];
 
         for ($offset = $sequence['start']; $offset < $sequence['end']; $offset = $end) {
-            if (ord($value[$offset]) !== 0xBF) {
-                throw self::invalid('A field of the platform extension is not a context-specific tag.');
+            $tag = ord($value[$offset]);
+
+            // Context-specific fields only; others (and their numbers) are Apple's to add, so they are skipped.
+            if (($tag & 0xC0) !== 0x80) {
+                throw self::invalid('A field of the platform extension is not context-specific.');
             }
 
-            $number = 0;
             $offset++;
+            $number = $tag & 0x1F;
 
-            for ($index = 0; ; $index++) {
-                if ($index === 4 || $offset >= $sequence['end'] || ($index === 0 && ord($value[$offset]) === 0x80)) {
-                    throw self::invalid('A field of the platform extension has an invalid tag number.');
+            if ($number === 0x1F) {
+                $number = 0;
+
+                for ($index = 0; ; $index++) {
+                    if ($index === 4 || $offset >= $sequence['end'] || ($index === 0 && ord($value[$offset]) === 0x80)) {
+                        throw self::invalid('A field of the platform extension has an invalid tag number.');
+                    }
+
+                    $byte = ord($value[$offset++]);
+                    $number = ($number << 7) | ($byte & 0x7F);
+
+                    if ($byte < 0x80) {
+                        break;
+                    }
                 }
 
-                $byte = ord($value[$offset++]);
-                $number = ($number << 7) | ($byte & 0x7F);
-
-                if ($byte < 0x80) {
-                    break;
+                // X.690, section 8.1.2.2: numbers below 31 have the one-byte form.
+                if ($number < 31) {
+                    throw self::invalid('A field of the platform extension writes a small tag number in the long form.');
                 }
             }
 
@@ -275,16 +295,20 @@ final class Der
                 throw self::invalid('The platform extension has the same field twice.');
             }
 
-            $fields[$number] = substr($value, $start, $end - $start);
+            $fields[$number] = ['constructed' => ($tag & 0x20) !== 0, 'content' => substr($value, $start, $end - $start)];
         }
 
         if (! isset($fields[1026])) {
             return null;
         }
 
-        $text = self::whole($fields[1026], self::OCTET_STRING, 'The platform field');
+        if (! $fields[1026]['constructed']) {
+            throw self::invalid('The platform field is not an explicitly tagged value.');
+        }
 
-        return self::content($fields[1026], $text);
+        $text = self::whole($fields[1026]['content'], self::OCTET_STRING, 'The platform field');
+
+        return self::content($fields[1026]['content'], $text);
     }
 
     /**

@@ -15,4 +15,4 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The pinned Apple App Attestation Root CA, with its provenance.
 - Apple's sample attestation and a real iOS 27 assertion as conformance fixtures.
 - `AppAttest\Testing\TestAuthority` and `TestDevice`, for tests of applications that use the verifier.
-- `Failure::UnsupportedPlatform` for keys whose certificate names a platform other than `iphoneos`.
+- `Failure::UnsupportedPlatform` for keys whose certificate names a platform other than `iphoneos`, or carries Apple's macOS access-control blob.

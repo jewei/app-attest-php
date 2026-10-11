@@ -7,6 +7,7 @@ namespace AppAttest\Testing;
 use AppAttest\AppId;
 use AppAttest\Environment;
 use AppAttest\ValidationCategory;
+use InvalidArgumentException;
 use OpenSSLAsymmetricKey;
 use OpenSSLCertificate;
 use OpenSSLCertificateSigningRequest;
@@ -57,6 +58,10 @@ final readonly class TestAuthority
         ?ValidationCategory $category = ValidationCategory::TestFlight,
         string $bundleVersion = '1.0',
     ): TestDevice {
+        if ($bundleVersion === '' || strlen($bundleVersion) > 255 || preg_match('//u', $bundleVersion) !== 1) {
+            throw new InvalidArgumentException('The bundle version must be 1 to 255 bytes of UTF-8.');
+        }
+
         return new TestDevice($this, self::key('prime256v1'), $appId, $environment, $category, $bundleVersion);
     }
 
@@ -67,6 +72,10 @@ final readonly class TestAuthority
      */
     public function issue(OpenSSLAsymmetricKey $key, string $keyId, string $nonce): array
     {
+        if (strlen($keyId) !== 32 || strlen($nonce) !== 32) {
+            throw new InvalidArgumentException('The key ID and the nonce must be 32 bytes.');
+        }
+
         $extension = "\x30\x24\xA1\x22\x04\x20".$nonce;
         $lines = "basicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature\n"
             .'1.2.840.113635.100.8.2 = DER:'.implode(':', str_split(bin2hex($extension), 2));

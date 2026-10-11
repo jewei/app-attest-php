@@ -489,3 +489,23 @@ it('accepts a P-256 intermediate and refuses another curve', function (string $c
     'P-256' => ['prime256v1', null],
     'P-521' => ['secp521r1', Failure::InvalidCertificate],
 ]);
+
+it('reads the platform field among other fields', function (string $extraFields, ?Failure $failure): void {
+    $lines = "basicConstraints = critical,CA:FALSE\n".TestAuthority::platformExtension('iphoneos', $extraFields);
+
+    expect(attestationFailure(['credentialExtensions' => $lines]))->toBe($failure);
+})->with([
+    'a low-tag constructed field' => ["\xA4\x03\x02\x01\x00", null],
+    'a primitive field' => ["\x85\x01\x00", null],
+    'another high-tag field' => ["\xBF\x8A\x78\x06\x04\x04\x32\x37\x2E\x30", null],
+    'a universal field' => ["\x04\x01\x00", Failure::InvalidCertificate],
+]);
+
+it('refuses a key with Apple\'s macOS access-control blob, even without a platform field', function (): void {
+    $macAcl = (string) base64_decode('MEAMAjExMDowCQwCb2uhAwEB/zAJDAJvYaEDAQH/MAsMBG9kZWyhAwEB/zAVDARvc2duoAYMBHJzZWMwBaYDAgEB', true);
+
+    expect(attestationFailure(['credentialExtensions' => "basicConstraints = critical,CA:FALSE\n".TestAuthority::aclExtension($macAcl)]))
+        ->toBe(Failure::UnsupportedPlatform)
+        ->and(attestationFailure(['credentialExtensions' => "basicConstraints = critical,CA:FALSE\n".TestAuthority::aclExtension('an iOS policy')]))
+        ->toBeNull();
+});

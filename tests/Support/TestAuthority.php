@@ -58,11 +58,21 @@ final class TestAuthority
     }
 
     /** OpenSSL extension lines for the App Attest platform field ([1026]) with $platform. */
-    public static function platformExtension(string $platform): string
+    public static function platformExtension(string $platform, string $extraFields = ''): string
     {
-        $field = "\xBF\x88\x02".chr(strlen($platform) + 2)."\x04".chr(strlen($platform)).$platform;
+        $field = "\xBF\x88\x02".self::length(strlen($platform) + 2)."\x04".self::length(strlen($platform)).$platform;
+        $fields = $extraFields.$field;
 
-        return '1.2.840.113635.100.8.7 = DER:'.self::hexColons("\x30".chr(strlen($field)).$field);
+        return '1.2.840.113635.100.8.7 = DER:'.self::hexColons("\x30".self::length(strlen($fields)).$fields);
+    }
+
+    /** OpenSSL extension lines for the access-control (aclBlob) extension 1.2.840.113635.100.8.6 with $blob. */
+    public static function aclExtension(string $blob): string
+    {
+        $octets = "\x04".self::length(strlen($blob)).$blob;
+        $tagged = "\xA3".self::length(strlen($octets)).$octets;
+
+        return '1.2.840.113635.100.8.6 = DER:'.self::hexColons("\x30".self::length(strlen($tagged)).$tagged);
     }
 
     /** A P-256 key from tests/Fixtures. */
@@ -78,14 +88,17 @@ final class TestAuthority
     }
 
     /**
-     * Builds an assertion object. Options: rpIdHash (string), extensions (map, raw string, or null for none),
+     * Builds an assertion object. Options: rpIdHash, flags (one byte) (strings), extensions (map, raw string, or null for none),
      * signWith (OpenSSLAsymmetricKey), signature (string), mutate (Closure(AssertionObject): void).
      *
      * @param  array<mixed>  $options
      */
     public static function assertion(OpenSSLAsymmetricKey $key, AppId $appId, string $clientData, int $counter, array $options = []): string
     {
-        $authenticatorData = Options::string($options, 'rpIdHash', $appId->hash())."\x00".pack('N', $counter).self::extensions($options);
+        $extensions = self::extensions($options);
+        // Real assertions with extensions set AT and ED (0xC0). The flags option tests other values.
+        $flags = Options::string($options, 'flags', $extensions === '' ? "\x40" : "\xC0");
+        $authenticatorData = Options::string($options, 'rpIdHash', $appId->hash()).$flags.pack('N', $counter).$extensions;
         $nonce = hash('sha256', $authenticatorData.hash('sha256', $clientData, true), true);
 
         if (! openssl_sign($nonce, $signature, Options::key($options, 'signWith') ?? $key, OPENSSL_ALGO_SHA256) || ! is_string($signature)) {
@@ -197,6 +210,16 @@ final class TestAuthority
             'publicKey' => self::publicPem($key),
             'credential' => $credential,
         ];
+    }
+
+    /** A DER length. */
+    private static function length(int $length): string
+    {
+        return match (true) {
+            $length < 0x80 => chr($length),
+            $length <= 0xFF => "\x81".chr($length),
+            default => "\x82".pack('n', $length),
+        };
     }
 
     /** @param array<mixed> $options */

@@ -7,6 +7,7 @@ use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\Tests\Support\AssertionObject;
 use AppAttest\Tests\Support\Bytes;
+use AppAttest\Tests\Support\CborEncoder;
 use AppAttest\Tests\Support\TestAuthority;
 use AppAttest\ValidationCategory;
 use AppAttest\Verifier;
@@ -68,7 +69,7 @@ it('refuses a signature over authenticatorData || clientDataHash, one hash short
         throw new \RuntimeException('openssl_sign failed.');
     }
 
-    $assertion = \AppAttest\Tests\Support\CborEncoder::encode(['signature' => new Bytes($signature), 'authenticatorData' => new Bytes($authenticatorData)]);
+    $assertion = CborEncoder::encode(['signature' => new Bytes($signature), 'authenticatorData' => new Bytes($authenticatorData)]);
 
     expect(failureOf(fn () => testVerifier()->verifyAssertion($assertion, 'POST /orders', $key['publicKey'], 0, Environment::Production)))->toBe(Failure::InvalidSignature);
 });
@@ -210,4 +211,39 @@ it('leaves OpenSSL\'s error queue empty', function (\Closure $call): void {
             // Expected: the stored key is not a PEM key.
         }
     }],
+]);
+
+it('reads assertion extensions only with the ED flag', function (string $flags, ?Failure $failure): void {
+    expect(assertionFailure(options: ['flags' => $flags]))->toBe($failure);
+})->with([
+    'AT and ED' => ["\xC0", null],
+    'ED only' => ["\x80", null],
+    'AT only' => ["\x40", Failure::MalformedInput],
+    'no flags' => ["\x00", Failure::MalformedInput],
+]);
+
+it('refuses extensions moved from the client data hash into the authenticator data', function (): void {
+    // A modified app signs SHA256(authData || X || SHA256(clientData)) and sends authData || X: the signature
+    // matches, but without the ED flag the extra bytes are refused.
+    $key = attestedKey();
+    $forged = CborEncoder::encode(['apple_validation_category_01' => new Bytes("\x04\0\0\0")]);
+    $authenticatorData = testAppId()->hash()."\x40".pack('N', 1);
+    $nonce = hash('sha256', $authenticatorData.$forged.hash('sha256', 'GET /me', true), true);
+    openssl_sign($nonce, $signature, $key['key'], OPENSSL_ALGO_SHA256);
+    $assertion = CborEncoder::encode(['signature' => new Bytes(is_string($signature) ? $signature : ''), 'authenticatorData' => new Bytes($authenticatorData.$forged)]);
+
+    expect(failureOf(fn () => testVerifier(categories: [ValidationCategory::AppStore])->verifyAssertion($assertion, 'GET /me', $key['publicKey'], 0, Environment::Production)))
+        ->toBe(Failure::MalformedInput);
+});
+
+it('refuses a stored key string that is not exactly one PUBLIC KEY block', function (\Closure $pem): void {
+    $publicKey = attestedKey()['publicKey'];
+    $value = $pem($publicKey);
+
+    expect(fn () => testVerifier()->verifyAssertion("\xA0", 'x', is_string($value) ? $value : '', 0, Environment::Production))
+        ->toThrow(\InvalidArgumentException::class);
+})->with([
+    'a key and then a certificate' => [fn (string $key): string => $key.TestAuthority::shared()->rootPem],
+    'two keys' => [fn (string $key): string => $key.$key],
+    'text after the key' => [fn (string $key): string => $key.'trailing'],
 ]);

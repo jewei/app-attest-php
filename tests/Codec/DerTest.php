@@ -160,6 +160,7 @@ it('refuses malformed certificates and extension lists', function (string $certi
         return tlv(0x30, substr($certificate, $outer['start'])."\x05\x00");
     })()],
     'signature as an OCTET STRING' => [certificateWith(signature: "\x04\x01\x00")],
+    'outer algorithm differs from the signed one' => [certificateWith(signatureAlgorithm: tlv(0x30, tlv(0x06, "\x2A\x86\x48\xCE\x3D\x04\x03\x02")))],
     'algorithm as a SET' => [certificateWith(signatureAlgorithm: tlv(0x31, ''))],
     'public key without a BIT STRING' => [certificateWith(publicKey: tlv(0x30, tlv(0x30, tlv(0x06, Der::EC_PUBLIC_KEY).tlv(0x06, Der::P256))))],
     'four fields' => [certificateWith([tlv(0x30, tlv(0x06, "\x2A\x03").tlv(0x01, "\xFF").tlv(0x04, 'a').tlv(0x04, 'b'))])],
@@ -285,6 +286,8 @@ it('refuses malformed keyUsage', function (string $value): void {
     'keyCertSign under five unused bits' => ["\x03\x02\x05\x04"],
     'a set bit in the unused bits' => ["\x03\x02\x01\x05"],
     'a set unused bit in the last of two bytes' => ["\x03\x03\x07\x04\x81"],
+    'a trailing zero named bit' => ["\x03\x02\x00\x06"],
+    'a trailing zero byte' => ["\x03\x03\x01\x06\x00"],
     'OCTET STRING' => ["\x04\x02\x01\x06"],
     'trailing byte' => ["\x03\x02\x01\x06\x00"],
 ]);
@@ -321,14 +324,18 @@ it('reads the platform from the App Attest platform extension', function (string
     'macOS' => ['300cbf88020804066d61636f7378', 'macosx'],
     'no platform field' => ['300abf8a7806040432372e30', null],
     'empty' => ['3000', null],
+    'with a low-tag field' => ['3013a403020100bf88020a04086970686f6e656f73', 'iphoneos'],
+    'with a primitive field' => ['3011850100bf88020a04086970686f6e656f73', 'iphoneos'],
 ]);
 
 it('refuses a platform extension of another shape', function (string $value): void {
     expect(failureOf(fn () => Der::platform((string) hex2bin($value))))->toBe(Failure::InvalidCertificate);
 })->with([
     'not a SEQUENCE' => ['310cbf88020804066d61636f7378'],
-    'a low tag number' => ['300aa1080406697068006f6e65'],
     'a non-minimal tag number' => ['300dbf8088020804066d61636f7378'],
+    'a small tag number in the long form' => ['3013bf05020400bf88020a04086970686f6e656f73'],
+    'a universal field' => ['30050403020100'],
+    'the platform field as a primitive' => ['300c9f88020804066d61636f7378'],
     'a five-byte tag number' => ['3010bf8080808002080406697068006f6e65'],
     'a truncated tag number' => ['3002bf88'],
     'a truncated length' => ['3003bf8802'],

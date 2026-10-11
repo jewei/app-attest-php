@@ -93,8 +93,8 @@ The package checks the cryptography and the data. Your server must also:
 `verifyAttestation()`:
 
 1. The object is CBOR with exactly `fmt`, `attStmt` (`x5c`, `receipt`), and `authData`; `fmt` is `apple-appattest`.
-2. `x5c` is an array of the credential certificate and one intermediate. The intermediate has neither the anchor's key nor the same issuer and subject. The credential key is EC P-256 and the intermediate key EC P-256 or P-384, checked before OpenSSL reads any key. The issuer and subject names match byte for byte. The anchor signed the intermediate, and the intermediate signed the credential certificate. All three are valid at the check time. The intermediate is a CA with `keyCertSign`; the credential certificate is not a CA. A critical extension other than basic constraints or key usage is refused. Flags, names, and times are read from strict DER (version 3, no written DEFAULT values, zero padding bits), and times must have the RFC 5280 forms: UTCTime through 2049, GeneralizedTime from 2050.
-3. The nonce extension (OID `1.2.840.113635.100.8.2`) equals `SHA256(authData || clientDataHash)`. A platform field in extension `1.2.840.113635.100.8.7` other than `iphoneos` is refused.
+2. `x5c` is an array of the credential certificate and one intermediate. The intermediate has neither the anchor's key nor the same issuer and subject. The credential key is EC P-256 and the intermediate key EC P-256 or P-384, checked before OpenSSL reads any key. The issuer and subject names match byte for byte. The anchor signed the intermediate, and the intermediate signed the credential certificate. All three are valid at the check time. The intermediate is a CA with `keyCertSign`; the credential certificate is not a CA. A critical extension other than basic constraints or key usage is refused. Flags, names, and times are read from DER that is strict for the fields that the package reads (version 3, the outer signature algorithm equal to the signed one, no written DEFAULT values, minimal keyUsage bits), and times must have the RFC 5280 forms: UTCTime through 2049, GeneralizedTime from 2050.
+3. The nonce extension (OID `1.2.840.113635.100.8.2`) equals `SHA256(authData || clientDataHash)`. A platform field in extension `1.2.840.113635.100.8.7` other than `iphoneos`, or Apple's macOS access-control blob in extension `1.2.840.113635.100.8.6`, is refused.
 4. `SHA256` of the credential key as an X9.62 uncompressed point equals the key ID. The key is EC P-256.
 5. The RP ID hash equals `SHA256` of the App ID.
 6. The counter is 0.
@@ -104,7 +104,7 @@ The package checks the cryptography and the data. Your server must also:
 
 `verifyAssertion()`:
 
-1. The stored key's environment is the verifier's environment. The object is CBOR with exactly `signature` and `authenticatorData`.
+1. The stored key's environment is the verifier's environment. The object is CBOR with exactly `signature` and `authenticatorData`. Extensions are read only when the ED flag is set; other bytes after the counter are refused.
 2. The signature is ECDSA with SHA-256 over `nonce = SHA256(authenticatorData || SHA256(clientData))`, with the stored key.
 3. The RP ID hash equals `SHA256` of the App ID.
 4. The counter is above the stored counter.
@@ -120,6 +120,8 @@ Apple's current documentation adds `apple_validation_category_01` (how the app w
 | `allowedCategories: null` | Accepts every category that `ValidationCategory` names, including `Development` and `DeveloperId`, and a missing one. |
 
 The verifier always refuses 0 (invalid), 7 to 9 (not appropriate for apps), and values that `ValidationCategory` does not name yet.
+
+The app chooses the client data hash, and nothing in the signed bytes marks where the authenticator data ends. In an assertion the ED flag closes that gap. Apple's attestations do not set the ED flag, so on a device that writes no extensions, a modified app can make an attestation carry any category. The verifier checks the policy again on every assertion, where it cannot be forged, so base your decisions on assertions; treat the attestation's category and bundle version as a hint.
 
 ## Failures
 

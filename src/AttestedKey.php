@@ -20,9 +20,12 @@ final readonly class AttestedKey
         /** The receipt for Apple's fraud risk metric (raw bytes). */
         public string $receipt,
         public Environment $environment,
-        /** Null when the authenticator data has no `apple_validation_category_01`. */
+        /**
+         * Null when the authenticator data has no `apple_validation_category_01`. A hint only: on a device that
+         * writes no extensions, a modified app can supply it. Every assertion checks the policy again.
+         */
         public ?ValidationCategory $validationCategory,
-        /** `apple_bundle_version_01`, or null when absent. */
+        /** `apple_bundle_version_01`, or null when absent. A hint only, like the category. */
         public ?string $bundleVersion,
     ) {}
 }
