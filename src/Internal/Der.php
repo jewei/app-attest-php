@@ -259,7 +259,8 @@ final class Der
         for ($offset = $sequence['start']; $offset < $sequence['end']; $offset = $end) {
             $tag = ord($value[$offset]);
 
-            // Context-specific fields only; others (and their numbers) are Apple's to add, so they are skipped.
+            // Apple writes context-specific fields; one of another class means the format changed, so it is refused.
+            // Context-specific fields other than [1026] are skipped.
             if (($tag & 0xC0) !== 0x80) {
                 throw self::invalid('A field of the platform extension is not context-specific.');
             }

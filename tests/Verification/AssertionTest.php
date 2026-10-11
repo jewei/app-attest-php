@@ -224,6 +224,14 @@ it('reads assertion extensions only with the ED flag', function (string $flags, 
     'UP only' => ["\x01", Failure::MalformedInput],
 ]);
 
+it('refuses the ED flag with nothing after the counter', function (): void {
+    expect(assertionFailure(options: ['flags' => "\xC0", 'extensions' => null]))->toBe(Failure::MalformedInput);
+});
+
+it('refuses a written null category or bundle version', function (string $name): void {
+    expect(assertionFailure(options: ['extensions' => [$name => null]]))->toBe(Failure::MalformedInput);
+})->with(['apple_validation_category_01', 'apple_bundle_version_01']);
+
 it('refuses one trailing byte without the ED flag', function (): void {
     expect(assertionFailure(options: ['flags' => "\x40", 'extensions' => "\x00"]))->toBe(Failure::MalformedInput)
         ->and(assertionFailure(options: ['flags' => "\x40", 'extensions' => null]))->toBeNull();
@@ -253,4 +261,5 @@ it('refuses a stored key string that is not exactly one PUBLIC KEY block', funct
     'a key and then a certificate' => [fn (string $key): string => $key.TestAuthority::shared()->rootPem],
     'two keys' => [fn (string $key): string => $key.$key],
     'text after the key' => [fn (string $key): string => $key.'trailing'],
+    'over 1 KB' => [fn (string $key): string => str_replace("\n-----END", str_repeat("\nAAAA", 220)."\n-----END", $key)],
 ]);

@@ -13,9 +13,15 @@ final readonly class CborMap
     /** @param array<int|string, mixed> $entries */
     public function __construct(public array $entries) {}
 
+    /** The value, or null when the key is absent. A CBOR null value is also null; use has() to tell them apart. */
     public function get(int|string $key): mixed
     {
         return $this->entries[$key] ?? null;
+    }
+
+    public function has(int|string $key): bool
+    {
+        return array_key_exists($key, $this->entries);
     }
 
     /**

@@ -12,6 +12,9 @@ final class CborEncoder
     public static function encode(mixed $value): string
     {
         return match (true) {
+            $value === null => "\xF6",
+            $value === false => "\xF4",
+            $value === true => "\xF5",
             is_int($value) && $value >= 0 => self::head(0, $value),
             is_int($value) => self::head(1, -1 - $value),
             $value instanceof Bytes => self::head(2, strlen($value->value)).$value->value,

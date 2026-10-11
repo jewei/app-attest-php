@@ -63,8 +63,9 @@ final readonly class AuthenticatorData
     /** Parses the authenticator data of an assertion. */
     public static function assertion(string $data): self
     {
-        if (strlen($data) > 37 && (ord($data[32]) & 0x80) === 0) {
-            throw self::malformed('The assertion has bytes after the counter but no ED flag.');
+        // ED set means that extensions follow, and ED clear that nothing follows.
+        if ((strlen($data) > 37) !== ((ord($data[32] ?? "\0") & 0x80) !== 0)) {
+            throw self::malformed('The assertion\'s ED flag does not match the bytes after its counter.');
         }
 
         return self::create($data, 37, '', '');
@@ -84,6 +85,13 @@ final readonly class AuthenticatorData
 
             if (! $extensions instanceof CborMap) {
                 throw self::malformed('The authenticator data extensions are not a CBOR map.');
+            }
+
+            // A key that is present must have a value: a CBOR null is not "no category".
+            foreach ([self::CATEGORY, self::BUNDLE_VERSION] as $name) {
+                if ($extensions->has($name) && $extensions->get($name) === null) {
+                    throw self::malformed("The extension {$name} is null.");
+                }
             }
 
             $category = self::category($extensions->get(self::CATEGORY));

@@ -95,7 +95,7 @@ The package checks the cryptography and the data. Your server must also:
 
 1. The object is CBOR with exactly `fmt`, `attStmt` (`x5c`, `receipt`), and `authData`; `fmt` is `apple-appattest`.
 2. `x5c` is an array of the credential certificate and one intermediate. The intermediate has neither the anchor's key nor the same issuer and subject. The credential key is EC P-256 and the intermediate key EC P-256 or P-384, checked before OpenSSL reads any key. The issuer and subject names match byte for byte. The anchor signed the intermediate, and the intermediate signed the credential certificate. All three are valid at the check time. The intermediate is a CA with `keyCertSign`; the credential certificate is not a CA. A critical extension other than basic constraints or key usage is refused. Flags, names, and times are read from DER that is strict for the fields that the package reads (version 3, the outer signature algorithm equal to the signed one, no written DEFAULT values, minimal keyUsage bits), and times must have the RFC 5280 forms: UTCTime through 2049, GeneralizedTime from 2050.
-3. The nonce extension (OID `1.2.840.113635.100.8.2`) equals `SHA256(authData || clientDataHash)`. A platform field in extension `1.2.840.113635.100.8.7` other than `iphoneos`, or Apple's macOS access-control blob in extension `1.2.840.113635.100.8.6`, is refused.
+3. The nonce extension (OID `1.2.840.113635.100.8.2`) equals `SHA256(authData || clientDataHash)`. A platform field in extension `1.2.840.113635.100.8.7` other than `iphoneos` is refused; this field is the macOS guard. Apple's documented macOS access-control blob in extension `1.2.840.113635.100.8.6` is refused too, but other macOS blobs are not recognised, so a certificate without the platform field depends on Apple writing it for every Mac key.
 4. `SHA256` of the credential key as an X9.62 uncompressed point equals the key ID. The key is EC P-256.
 5. The RP ID hash equals `SHA256` of the App ID.
 6. The counter is 0.
@@ -105,7 +105,7 @@ The package checks the cryptography and the data. Your server must also:
 
 `verifyAssertion()`:
 
-1. The stored key's environment is the verifier's environment. The object is CBOR with exactly `signature` and `authenticatorData`. Extensions are read only when the ED flag is set; other bytes after the counter are refused.
+1. The stored key's environment is the verifier's environment. The object is CBOR with exactly `signature` and `authenticatorData`. The ED flag must match the bytes after the counter: with it, an extensions map; without it, nothing.
 2. The signature is ECDSA with SHA-256 over `nonce = SHA256(authenticatorData || SHA256(clientData))`, with the stored key.
 3. The RP ID hash equals `SHA256` of the App ID.
 4. The counter is above the stored counter.
@@ -155,7 +155,7 @@ The package empties OpenSSL's error queue (`openssl_error_string()`) after its c
 
 - 64-bit PHP only: Composer requires `php-64bit`, and the constructor refuses a 32-bit build.
 - Attestations up to 32 KB and assertions up to 4 KB (`Verifier::MAX_ATTESTATION_BYTES`, `Verifier::MAX_ASSERTION_BYTES`).
-- The CBOR decoder accepts only definite-length integers, byte strings, text strings, arrays, and maps, with at most 8 levels and 64 entries per container. It accepts a length or integer in a longer form than needed, because the value is the same and the signed data is hashed as raw bytes.
+- The CBOR decoder accepts only definite-length integers, byte strings, text strings, arrays, maps, false, true, and null, with at most 8 levels and 64 entries per container. It accepts a length or integer in a longer form than needed, because the value is the same and the signed data is hashed as raw bytes.
 - iPhone and iPad keys only. A key whose certificate names another platform, such as macOS, is refused (`UnsupportedPlatform`): on macOS the RP ID uses the signing identifier, and Apple requires an `aclBlob` check that this package does not make. Certificates without the platform field are accepted. Tests use iOS data.
 
 ## Test your integration

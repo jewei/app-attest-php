@@ -258,9 +258,9 @@ final readonly class Verifier
 
     private static function publicKey(string $pem): OpenSSLAsymmetricKey
     {
-        // Exactly one PUBLIC KEY block: OpenSSL would read a "file://" path, and it reads a certificate in the
-        // same string before the key.
-        if (preg_match('~\A-----BEGIN PUBLIC KEY-----\r?\n[A-Za-z0-9+/=\r\n]+-----END PUBLIC KEY-----\r?\n?\z~', $pem) !== 1) {
+        // Exactly one PUBLIC KEY block of a sane size: OpenSSL would read a "file://" path, and it reads a
+        // certificate in the same string before the key. An EC P-256 PEM has about 180 bytes.
+        if (strlen($pem) > 1024 || preg_match('~\A-----BEGIN PUBLIC KEY-----\r?\n[A-Za-z0-9+/=\r\n]+-----END PUBLIC KEY-----\r?\n?\z~', $pem) !== 1) {
             throw new InvalidArgumentException('The public key must be one PEM SubjectPublicKeyInfo block.');
         }
 

@@ -27,8 +27,11 @@ final class TestDevice
 
     private readonly string $point;
 
-    /** @internal Created by TestAuthority::device(). */
-    /** @param Closure(OpenSSLAsymmetricKey, string, string): array{string, string} $issue Issues the credential certificate. */
+    /**
+     * @internal Created by TestAuthority::device().
+     *
+     * @param  Closure(OpenSSLAsymmetricKey, string, string): array{string, string}  $issue  Issues the credential certificate.
+     */
     public function __construct(
         private readonly Closure $issue,
         private readonly OpenSSLAsymmetricKey $key,

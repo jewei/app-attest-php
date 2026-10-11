@@ -9,18 +9,21 @@ enum Failure: string
 {
     /**
      * The input is empty, too large, truncated, or not the CBOR structure that Apple defines; the key ID is not
-     * 32 bytes; or an assertion has bytes after its counter without the ED flag.
+     * 32 bytes; an assertion's ED flag does not match the bytes after its counter; or an extension value is null.
      */
     case MalformedInput = 'malformed_input';
     /** The attestation format is not `apple-appattest`. */
     case UnsupportedFormat = 'unsupported_format';
-    /** The credential certificate names a platform other than iPhone and iPad (`iphoneos`), such as macOS. */
+    /**
+     * The credential certificate names a platform other than iPhone and iPad (`iphoneos`), such as macOS, or has
+     * Apple's macOS access-control blob.
+     */
     case UnsupportedPlatform = 'unsupported_platform';
     /**
      * A certificate is malformed or not strict DER; the chain does not lead to the trust anchor; the intermediate
      * has the anchor's key or is self-issued; a certificate is not valid at the check time; a CA flag, key usage,
-     * or critical extension is wrong; a key is on another curve; or the nonce or platform extension is missing
-     * or malformed.
+     * or critical extension is wrong; a key is on another curve; the nonce extension is missing or malformed; or
+     * the platform extension is malformed.
      */
     case InvalidCertificate = 'invalid_certificate';
     /** The credential certificate's nonce is not SHA-256(authData || clientDataHash). */
