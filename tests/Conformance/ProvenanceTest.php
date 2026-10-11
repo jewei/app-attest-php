@@ -30,3 +30,10 @@ it('records the hash of the third-party assertion fixture', function (): void {
     expect(hash('sha256', $file))->toBe(specString($provenance, 'sha256'))
         ->and(is_file(__DIR__.'/../../spec/third-party/LICENSE-block-buzz'))->toBeTrue();
 });
+
+it('records the hash of Apple\'s 2024 sample attestation', function (): void {
+    $provenance = specObject(loadSpec('provenance.json'), 'apple-sample-attestation-2024.json');
+    $attestation = (string) base64_decode(specString(loadSpec('apple-sample-attestation-2024.json'), 'attestation'), true);
+
+    expect(hash('sha256', $attestation))->toBe(specString($provenance, 'attestationSha256'));
+});

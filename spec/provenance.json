@@ -18,5 +18,12 @@
     "retrieved": "2026-10-12",
     "sha256": "b012352f5e42904120a7950c441ff401a566f0f963143dd7d8ad7d161bcbef96",
     "evidence": "A real iOS 27 assertion with Apple's extensions in authenticatorData (flags 0xC0). The file is unchanged from the pull request's head commit. The pull request was open, not merged, on 2026-10-12."
+  },
+  "apple-sample-attestation-2024.json": {
+    "source": "https://github.com/linirini/go-app-attest/blob/59be21cfcf08260a56254f551baad2db62c75d64/appattest/attestation_apple_test.go",
+    "originalSource": "Apple's Attestation Object Validation Guide (developer.apple.com), 2024 version",
+    "retrieved": "2026-10-12",
+    "attestationSha256": "8f6c5d4da45e8be93316f8c92d58591faedcd4e32d6d2541ec01d5a7a73755a1",
+    "evidence": "The certificate chain verifies to the pinned root, so Apple made the credential certificate and the nonce in it; the nonce binds authData and the client data hash. The receipt is outside the signed data and is not proven. The source repository has no license file; the bytes are Apple's published sample data."
   }
 }
