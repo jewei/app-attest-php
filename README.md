@@ -26,7 +26,7 @@ $verifier = new Verifier(
 );
 ```
 
-The [category policy](#validation-categories) is required.
+The [category policy](#validation-categories) is required. For an App Clip, use the full app's bundle ID: Apple builds the App Clip's RP ID from it.
 
 ## Verify an attestation
 
@@ -126,7 +126,7 @@ The verifier always refuses 0 (invalid), 7 to 9 (not appropriate for apps), and 
 
 The app chooses the client data hash, and nothing in the signed bytes marks where the authenticator data ends. In an assertion the ED flag closes that gap. Apple's attestations do not set the ED flag, so on a device that writes no extensions, a modified app can make an attestation carry any category. The verifier checks the policy again on every assertion, where it cannot be forged, so base your decisions on assertions; treat the attestation's category and bundle version as a hint.
 
-Apple does not document the ED flag of assertions. The rule above follows a real iOS 27 assertion (flags `0xC0` with extensions). If every assertion from one OS version fails with `malformed_input`, that version writes extensions without the flag: please open an issue with a sample.
+Apple does not document the ED flag of assertions. The rule above follows a real iOS 27 assertion (flags `0xC0` with extensions). If every assertion from one OS version fails with `malformed_input`, that version writes extensions without the flag: please [open an issue](https://github.com/jewei/app-attest-php/issues) with a sample.
 
 ## Failures
 

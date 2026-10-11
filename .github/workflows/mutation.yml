@@ -6,6 +6,8 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'composer.json'
+      - 'phpunit.xml'
+      - '.github/workflows/mutation.yml'
   schedule:
     - cron: '23 4 * * 1'
   workflow_dispatch:

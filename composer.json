@@ -12,6 +12,11 @@
         "ios"
     ],
     "license": "MIT",
+    "homepage": "https://github.com/jewei/app-attest-php",
+    "support": {
+        "issues": "https://github.com/jewei/app-attest-php/issues",
+        "source": "https://github.com/jewei/app-attest-php"
+    },
     "require": {
         "php": "^8.3.0",
         "php-64bit": "*",
