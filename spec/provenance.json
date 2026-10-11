@@ -1,0 +1,14 @@
+{
+  "apple-app-attestation-root-ca.pem": {
+    "source": "https://www.apple.com/certificateauthority/Apple_App_Attestation_Root_CA.pem",
+    "retrieved": "2026-10-11",
+    "sha256": "c778d09ac341f7fd9f8f3b19e2b815af6aed4ad4490e1e92c05cb355212a5013",
+    "certificateSha256": "1cb9823ba28ba6ad2d33a006941de2ae4f513ef1d4e831b9f7e0fa7b6242c932",
+    "evidence": "Downloaded over HTTPS from apple.com. Apple publishes no fingerprint. The intermediate certificate in Apple's sample attestation (apple-sample-attestation.json, from developer.apple.com) verifies against this root."
+  },
+  "apple-sample-attestation.json": {
+    "source": "https://developer.apple.com/documentation/devicecheck/attestation-object-validation-guide",
+    "retrieved": "2026-10-11",
+    "attestationSha256": "e4ca508153f6619a29d0887eb0ffe19540b9f15c5a6aeccdac26c49affd5f61a"
+  }
+}

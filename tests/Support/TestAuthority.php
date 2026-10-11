@@ -1,0 +1,243 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AppAttest\Tests\Support;
+
+use AppAttest\AppId;
+use OpenSSLAsymmetricKey;
+use OpenSSLCertificate;
+use OpenSSLCertificateSigningRequest;
+use RuntimeException;
+
+/**
+ * A certificate authority shaped like Apple's: a P-384 root, a P-384 intermediate,
+ * and P-256 credential certificates with the App Attest nonce extension.
+ * It builds attestations and assertions that tests can break one check at a time.
+ */
+final class TestAuthority
+{
+    private static ?self $shared = null;
+
+    private function __construct(
+        public readonly string $rootPem,
+        private readonly OpenSSLAsymmetricKey $rootKey,
+        private readonly OpenSSLCertificate $root,
+        public readonly string $intermediateDer,
+        private readonly OpenSSLCertificate $intermediate,
+        private readonly OpenSSLAsymmetricKey $intermediateKey,
+    ) {}
+
+    public static function shared(): self
+    {
+        return self::$shared ??= self::create();
+    }
+
+    /** @param string $intermediateExtensions OpenSSL extension lines for the intermediate. */
+    public static function create(
+        string $intermediateExtensions = "basicConstraints = critical,CA:TRUE,pathlen:0\nkeyUsage = critical,keyCertSign,cRLSign",
+        int $rootDays = 3650,
+    ): self {
+        $rootKey = self::key('secp384r1');
+        $root = self::sign(['commonName' => 'Test App Attestation Root CA', 'organizationName' => 'Test'], $rootKey, null, $rootKey,
+            "basicConstraints = critical,CA:TRUE\nkeyUsage = critical,keyCertSign,cRLSign", $rootDays, 'sha384');
+
+        $intermediateKey = self::key('secp384r1');
+        $intermediate = self::sign(['commonName' => 'Test App Attestation CA 1', 'organizationName' => 'Test'], $intermediateKey, $root, $rootKey,
+            $intermediateExtensions, 3650, 'sha384');
+
+        return new self(self::pem($root), $rootKey, $root, self::der($intermediate), $intermediate, $intermediateKey);
+    }
+
+    /**
+     * Builds an assertion object. Options: rpIdHash (string), extensions (map, raw string, or null for none),
+     * signWith (OpenSSLAsymmetricKey), signature (string), mutate (Closure(AssertionObject): void).
+     *
+     * @param  array<mixed>  $options
+     */
+    public static function assertion(OpenSSLAsymmetricKey $key, AppId $appId, string $clientData, int $counter, array $options = []): string
+    {
+        $authenticatorData = Options::string($options, 'rpIdHash', $appId->hash())."\x00".pack('N', $counter).self::extensions($options);
+        $nonce = hash('sha256', $authenticatorData.hash('sha256', $clientData, true), true);
+
+        if (! openssl_sign($nonce, $signature, Options::key($options, 'signWith') ?? $key, OPENSSL_ALGO_SHA256) || ! is_string($signature)) {
+            throw new RuntimeException('openssl_sign failed.');
+        }
+
+        $object = new AssertionObject(new Bytes(Options::string($options, 'signature', $signature)), new Bytes($authenticatorData));
+        Options::closure($options, 'mutate')?->__invoke($object);
+
+        return $object->encode();
+    }
+
+    public static function key(string $curve = 'prime256v1'): OpenSSLAsymmetricKey
+    {
+        $key = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => $curve]);
+
+        if ($key === false) {
+            throw new RuntimeException('openssl_pkey_new failed.');
+        }
+
+        return $key;
+    }
+
+    public static function publicPem(OpenSSLAsymmetricKey $key): string
+    {
+        $details = openssl_pkey_get_details($key);
+
+        if (! is_array($details) || ! is_string($details['key'] ?? null)) {
+            throw new RuntimeException('openssl_pkey_get_details failed.');
+        }
+
+        return $details['key'];
+    }
+
+    /**
+     * Builds an attestation object. Options: counter (int), aaguid, credentialId, rpIdHash (strings), extensions
+     * (map, raw string, or null for none), nonce (string, or null for no extension), nonceExtension (raw DER),
+     * credentialExtensions (OpenSSL lines), credentialDays (int), curve (string), issuer ('intermediate' or
+     * 'root'), mutate (Closure(AttestationObject): void).
+     *
+     * @param  array<mixed>  $options
+     * @return array{attestation: string, keyId: string, key: OpenSSLAsymmetricKey, publicKey: string, credential: string}
+     */
+    public function attest(AppId $appId, string $clientDataHash, array $options = []): array
+    {
+        $key = self::key(Options::string($options, 'curve', 'prime256v1'));
+        $point = self::point($key);
+        $keyId = hash('sha256', $point, true);
+        $credentialId = Options::string($options, 'credentialId', $keyId);
+
+        $authData = Options::string($options, 'rpIdHash', $appId->hash())
+            ."\x40".pack('N', Options::int($options, 'counter', 0))
+            .Options::string($options, 'aaguid', "appattest\0\0\0\0\0\0\0")
+            .pack('n', strlen($credentialId)).$credentialId
+            .CborEncoder::encode([1 => 2, 3 => -7, -1 => 1, -2 => new Bytes(substr($point, 1, 32)), -3 => new Bytes(substr($point, 33, 32))])
+            .self::extensions($options);
+
+        $nonce = Options::nullableString($options, 'nonce', hash('sha256', $authData.$clientDataHash, true));
+        $lines = Options::string($options, 'credentialExtensions', "basicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature");
+        $nonceExtension = Options::nullableString($options, 'nonceExtension', null);
+
+        if ($nonceExtension !== null) {
+            $lines .= "\n1.2.840.113635.100.8.2 = DER:".self::hexColons($nonceExtension);
+        } elseif ($nonce !== null) {
+            $octets = "\x04".chr(strlen($nonce)).$nonce;
+            $tagged = "\xA1".chr(strlen($octets)).$octets;
+            $lines .= "\n1.2.840.113635.100.8.2 = DER:".self::hexColons("\x30".chr(strlen($tagged)).$tagged);
+        }
+
+        [$issuer, $issuerKey] = Options::string($options, 'issuer', 'intermediate') === 'root'
+            ? [$this->root, $this->rootKey]
+            : [$this->intermediate, $this->intermediateKey];
+        $credential = self::der(self::sign(['commonName' => bin2hex($keyId)], $key, $issuer, $issuerKey, $lines, Options::int($options, 'credentialDays', 3), 'sha256'));
+
+        $object = new AttestationObject('apple-appattest', [new Bytes($credential), new Bytes($this->intermediateDer)], new Bytes('test receipt'), new Bytes($authData));
+        Options::closure($options, 'mutate')?->__invoke($object);
+
+        return [
+            'attestation' => $object->encode(),
+            'keyId' => $keyId,
+            'key' => $key,
+            'publicKey' => self::publicPem($key),
+            'credential' => $credential,
+        ];
+    }
+
+    /** @param array<mixed> $options */
+    private static function extensions(array $options): string
+    {
+        if (! array_key_exists('extensions', $options)) {
+            return CborEncoder::encode(['apple_bundle_version_01' => '1.0', 'apple_validation_category_01' => new Bytes("\x02\x00\x00\x00")]);
+        }
+
+        $extensions = $options['extensions'];
+
+        return match (true) {
+            $extensions === null => '',
+            is_string($extensions) => $extensions,
+            default => CborEncoder::encode($extensions),
+        };
+    }
+
+    private static function point(OpenSSLAsymmetricKey $key): string
+    {
+        $details = openssl_pkey_get_details($key);
+
+        if (! is_array($details) || ! is_array($details['ec'] ?? null)
+            || ! is_string($details['ec']['x'] ?? null) || ! is_string($details['ec']['y'] ?? null)) {
+            throw new RuntimeException('The key is not an EC key.');
+        }
+
+        $size = ($details['ec']['curve_name'] ?? null) === 'secp384r1' ? 48 : 32;
+
+        return "\x04".str_pad($details['ec']['x'], $size, "\0", STR_PAD_LEFT).str_pad($details['ec']['y'], $size, "\0", STR_PAD_LEFT);
+    }
+
+    /** @param array<string, string> $subject */
+    private static function sign(
+        array $subject,
+        OpenSSLAsymmetricKey $key,
+        ?OpenSSLCertificate $issuer,
+        OpenSSLAsymmetricKey $issuerKey,
+        string $extensions,
+        int $days,
+        string $digest,
+    ): OpenSSLCertificate {
+        $config = tempnam(sys_get_temp_dir(), 'app-attest-test-');
+
+        if ($config === false) {
+            throw new RuntimeException('tempnam failed.');
+        }
+
+        try {
+            file_put_contents($config, "[req]\ndistinguished_name = dn\n[dn]\n[ext]\n{$extensions}\n");
+            $options = ['config' => $config, 'x509_extensions' => 'ext', 'digest_alg' => $digest];
+            $csr = openssl_csr_new($subject, $key, $options);
+
+            if (! $csr instanceof OpenSSLCertificateSigningRequest) {
+                throw new RuntimeException('openssl_csr_new failed: '.openssl_error_string());
+            }
+
+            $certificate = openssl_csr_sign($csr, $issuer, $issuerKey, $days, $options, random_int(1, PHP_INT_MAX));
+
+            if ($certificate === false) {
+                throw new RuntimeException('openssl_csr_sign failed: '.openssl_error_string());
+            }
+
+            return $certificate;
+        } finally {
+            unlink($config);
+
+            while (openssl_error_string() !== false) {
+                // Empty the queue so that tests start clean.
+            }
+        }
+    }
+
+    private static function pem(OpenSSLCertificate $certificate): string
+    {
+        if (! openssl_x509_export($certificate, $pem) || ! is_string($pem)) {
+            throw new RuntimeException('openssl_x509_export failed.');
+        }
+
+        return $pem;
+    }
+
+    private static function der(OpenSSLCertificate $certificate): string
+    {
+        $body = preg_replace('/-----[^-]+-----|\s/', '', self::pem($certificate));
+        $der = base64_decode((string) $body, true);
+
+        if ($der === false) {
+            throw new RuntimeException('The PEM certificate is not Base64.');
+        }
+
+        return $der;
+    }
+
+    private static function hexColons(string $bytes): string
+    {
+        return implode(':', str_split(bin2hex($bytes), 2));
+    }
+}
