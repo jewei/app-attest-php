@@ -45,7 +45,8 @@ it('writes no extensions and the AT flag only without a category', function (): 
 });
 
 it('issues credential certificates for 3 days and CA certificates for 10 years, and leaves no temporary files', function (): void {
-    $pattern = sys_get_temp_dir().'/app-attest-test-*';
+    // Only this process's files: parallel workers create and delete their own.
+    $pattern = sys_get_temp_dir().'/app-attest-test-'.getmypid().'-*';
     $before = glob($pattern) ?: [];
     $device = TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'));
     $attestation = Cbor::decode($device->attest(hash('sha256', 'c', true)));

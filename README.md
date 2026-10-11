@@ -2,7 +2,7 @@
 
 Verify [Apple App Attest](https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity) attestations and assertions on a PHP server. 64-bit PHP `^8.3` with `ext-openssl`, and no other dependencies.
 
-The package follows Apple's [server validation steps](https://developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server). It passes Apple's [sample attestation](https://developer.apple.com/documentation/devicecheck/attestation-object-validation-guide) against the pinned Apple App Attestation Root CA, and a real iOS 27 assertion.
+The package follows Apple's [server validation steps](https://developer.apple.com/documentation/devicecheck/validating-apps-that-connect-to-your-server). It passes Apple's [sample attestations](https://developer.apple.com/documentation/devicecheck/attestation-object-validation-guide) of 2026 (iOS 27) and 2024 (iOS 18.0) against the pinned Apple App Attestation Root CA, and a real iOS 27 assertion.
 
 ## Install
 
@@ -56,8 +56,8 @@ try {
     return refuse();
 }
 
-// Store for this device: $key->keyId, $key->publicKey (PEM), $key->environment, counter 0, and $key->receipt
-// (unverified: see below).
+// Store for this device: $key->keyId, $key->publicKey (PEM), $key->environment->value, counter 0, and, if you use
+// the fraud metric, $key->receipt (unverified: see below) and $key->certificate (each new receipt's field 3 must equal it).
 ```
 
 The credential certificate is valid for 3 days (in Apple's samples, from 24 hours before the time in its serial number). Verify the attestation when the app sends it, and keep the server clock in sync (NTP).

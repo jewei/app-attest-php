@@ -82,7 +82,8 @@ final readonly class TestAuthority
         int $days,
         string $digest,
     ): OpenSSLCertificate {
-        $config = tempnam(sys_get_temp_dir(), 'app-attest-test-');
+        // The process ID keeps the files of parallel test workers apart.
+        $config = tempnam(sys_get_temp_dir(), 'app-attest-test-'.getmypid().'-');
 
         // Untested: only a full or read-only temporary directory reaches this.
         if ($config === false) {

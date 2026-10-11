@@ -16,7 +16,7 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   results `AttestedKey` and `VerifiedAssertion`.
 - `VerificationException`, with a `Failure` case for each refusal.
 - The pinned Apple App Attestation Root CA, with its provenance.
-- Apple's sample attestation and a real iOS 27 assertion as conformance fixtures.
+- Apple's sample attestations of 2026 (iOS 27) and 2024 (iOS 18.0) and a real iOS 27 assertion as conformance fixtures.
 - `AppAttest\Testing\TestAuthority` and `TestDevice`, for tests of applications that use the verifier.
 - `CategoryPolicy::only()`, `onlyOrMissing()`, and `any()` for the validation category.
 - `SECURITY.md`: private vulnerability reports.

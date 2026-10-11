@@ -53,3 +53,19 @@ The `apple_validation_category_01` extension: how the app's code is signed, for 
 ### Receipt
 
 Bytes in the attestation statement that the server can send to Apple to get a fraud risk metric. The package returns them and does not verify them.
+
+### ED flag
+
+Bit 7 of the authenticator data flags: extensions follow the counter. Assertions with extensions set it; Apple's attestations do not.
+
+### Platform field
+
+Field `[1026]` of the certificate extension `1.2.840.113635.100.8.7`: the platform that made the key, for example `iphoneos`.
+
+### aclBlob
+
+The certificate extension `1.2.840.113635.100.8.6`: the key's access-control policy. On macOS it requires full security mode and System Integrity Protection.
+
+### Environment
+
+`production` or `development` App Attest (the app's entitlement). The AAGUID names it, and a key works only in its own environment.
