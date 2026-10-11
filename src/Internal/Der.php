@@ -107,6 +107,7 @@ final class Der
         $outer = self::whole($certificate, self::SEQUENCE, 'A certificate');
         $parts = self::children($certificate, $outer['start'], $outer['end']);
 
+        // The tag of $parts[1] is defensive: certificate() compares the algorithm with the signed one byte for byte.
         if (count($parts) !== 3 || $parts[0]['tag'] !== self::SEQUENCE || $parts[1]['tag'] !== self::SEQUENCE || $parts[2]['tag'] !== self::BIT_STRING) {
             throw self::invalid('A certificate does not have a TBSCertificate, an algorithm, and a signature.');
         }
@@ -450,6 +451,7 @@ final class Der
 
         $timestamp = gmmktime($hour, $minute, $second, $month, $day, $year);
 
+        // Untested: gmmktime() fails only on platforms without 64-bit time, which composer.json refuses.
         return $timestamp !== false ? $timestamp : throw self::invalid('A certificate time is out of range.');
     }
 

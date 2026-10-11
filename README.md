@@ -22,11 +22,11 @@ use AppAttest\Verifier;
 $verifier = new Verifier(
     new AppId('ABCDE12345', 'com.example.app'), // App ID prefix (team ID) and bundle ID
     Environment::Production,                     // from your server configuration
-    CategoryPolicy::only(ValidationCategory::AppStore, ValidationCategory::TestFlight),
+    CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore, ValidationCategory::TestFlight),
 );
 ```
 
-The [category policy](#validation-categories) is required. `only()` refuses a device that writes no category, at attestation and at every assertion: Apple's iOS 27 sample writes one, but Apple's earlier sample (iOS 18.0) writes none. If your app supports such iOS versions, use `onlyOrMissing()` and accept that those devices get no category check.
+The [category policy](#validation-categories) is required. Devices write the category from iOS 27; iOS 26 and earlier write none (Apple, WWDC26 session 201). `onlyOrMissing()` accepts those devices without a category check. If your app needs iOS 27 or later, use the stricter `only()`, which refuses a device that writes no category, at attestation and at every assertion.
 
 For an App Clip, use the full app's bundle ID: Apple builds the App Clip's RP ID from it. Write the bundle ID in the exact case of the app's entitlement: the RP ID hash is case-sensitive.
 
@@ -92,7 +92,7 @@ The package checks the cryptography and the data. Your server must also:
 - Store each key's environment with it, and pass it back as `keyEnvironment`. Build the verifier's environment from your server configuration, never from the stored key, so that a development key cannot pass a production verifier.
 - Refuse a key ID that another account already uses.
 - Check `bundleVersion` if you need a minimum app version. The package returns it and does not compare versions.
-- Verify the receipt and request the fraud risk metric yourself, if you use it. The package returns the receipt bytes and does not check them. The attestation does not sign the receipt, so an attacker can put in the receipt of another key: before you store or use it, verify its Apple signature and that its App ID and public key match this key.
+- Verify the receipt and request the fraud risk metric yourself, if you use it ([Assessing fraud risk](https://developer.apple.com/documentation/devicecheck/assessing-fraud-risk)). The package returns the receipt bytes and does not check them. The attestation does not sign the receipt, so an attacker can put in the receipt of another key: before you store or use it, verify its Apple signature, that its App ID, public key, and server challenge match this attestation, and that its creation time is no more than five minutes old.
 
 ## Checks
 
@@ -100,7 +100,7 @@ The package checks the cryptography and the data. Your server must also:
 
 1. The object is CBOR with exactly `fmt`, `attStmt` (`x5c`, `receipt`), and `authData`; `fmt` is `apple-appattest`.
 2. `x5c` is an array of the credential certificate and one intermediate. The intermediate has neither the anchor's key nor the same issuer and subject. The credential key is EC P-256 and the intermediate key EC P-256 or P-384, checked before OpenSSL reads any key. The issuer and subject names match byte for byte. The anchor signed the intermediate, and the intermediate signed the credential certificate. All three are valid at the check time. The intermediate is a CA with `keyCertSign`; the credential certificate is not a CA. A critical extension other than basic constraints or key usage is refused. Flags, names, and times are read from DER that is strict for the fields that the package reads (version 3, the outer signature algorithm equal to the signed one, no written DEFAULT values, minimal keyUsage bits), and times must have the RFC 5280 forms: UTCTime through 2049, GeneralizedTime from 2050.
-3. The nonce extension (OID `1.2.840.113635.100.8.2`) equals `SHA256(authData || clientDataHash)`. A platform field in extension `1.2.840.113635.100.8.7` other than `iphoneos` is refused; this field is the macOS guard. Apple's documented macOS access-control blob in extension `1.2.840.113635.100.8.6` is refused too, but other macOS blobs are not recognised, so a certificate without the platform field depends on Apple writing it for every Mac key.
+3. The nonce extension (OID `1.2.840.113635.100.8.2`) equals `SHA256(authData || clientDataHash)`. A platform field in extension `1.2.840.113635.100.8.7` other than `iphoneos` is refused. Apple's documented macOS key access-control blob in extension `1.2.840.113635.100.8.6` is refused too: Apple gives every App Attest key on macOS 27 that policy (full security mode and System Integrity Protection, WWDC26 session 201), so it marks a Mac key even if the platform field says `iphoneos`.
 4. `SHA256` of the credential key as an X9.62 uncompressed point equals the key ID. The key is EC P-256.
 5. The RP ID hash equals `SHA256` of the App ID.
 6. The counter is 0.
@@ -118,19 +118,19 @@ The package checks the cryptography and the data. Your server must also:
 
 ## Validation categories
 
-Apple's current documentation adds `apple_validation_category_01` (how the app's code is signed) and `apple_bundle_version_01` to the authenticator data. (Its assertion steps call them `validationCategory` and `bundleVersion`; the real assertion in `spec/` uses the `_01` keys, so the package reads those.) Apple's sample attestation (iOS 27) and the real iOS 27 assertion in `spec/` have both; Apple's earlier sample (iOS 18.0) has neither, so devices on older iOS versions may not write them. Both results expose them as `validationCategory` (a `ValidationCategory`, or null) and `bundleVersion` (a string, or null).
+Apple's current documentation adds `apple_validation_category_01` (how the app's code is signed) and `apple_bundle_version_01` to the authenticator data. (Its assertion steps call them `validationCategory` and `bundleVersion`; the real assertion in `spec/` uses the `_01` keys, so the package reads those.) Devices write them from iOS 27 (Apple, WWDC26 session 201); iOS 26 and earlier write neither. Apple's sample attestation (iOS 27) and the real iOS 27 assertion in `spec/` have both. Both results expose them as `validationCategory` (a `ValidationCategory`, or null) and `bundleVersion` (a string, or null).
 
 | Policy | Result |
 | --- | --- |
-| `CategoryPolicy::only(...)` | Only the listed categories. A missing category fails, so devices that do not write one are refused. |
-| `CategoryPolicy::onlyOrMissing(...)` | The listed categories, or none (devices on older iOS versions). |
+| `CategoryPolicy::only(...)` | Only the listed categories. A missing category fails, so devices on iOS 26 and earlier are refused. For apps that need iOS 27 or later. |
+| `CategoryPolicy::onlyOrMissing(...)` | The listed categories, or none (devices on iOS 26 and earlier). |
 | `CategoryPolicy::any()` | Every category that `ValidationCategory` names, and a missing one: also `OperatingSystem` (1) and `Other` (10), which point to code that Apple did not sign for distribution to you, such as a re-signed or sideloaded app. For tests and diagnostics, not production. |
 
 A third-party app that Apple distributes reports `AppStore` or `TestFlight`, and a build that Xcode runs with a development profile reports `Development`. The verifier always refuses 0 (invalid), 7 to 9 (Apple: binaries that the system generates in restricted situations, not appropriate), and values that `ValidationCategory` does not name yet.
 
-The app chooses the client data hash, and nothing in the signed bytes marks where the authenticator data ends. In an assertion the ED flag closes that gap. Apple's attestations do not set the ED flag, so on a device that writes no extensions, a modified app can make an attestation carry any category. The verifier checks the policy again on every assertion, where it cannot be forged, so base your decisions on assertions; treat the attestation's category and bundle version as a hint.
+The app chooses the client data hash, and nothing in the signed bytes marks where the authenticator data ends. In an assertion the ED flag closes that gap. Apple's attestations do not set the ED flag, so on a device that writes no extensions, a modified app can make an attestation carry any category. The verifier checks the policy again on every assertion, where the app cannot change it, so base your decisions on assertions; treat the attestation's category and bundle version as a hint.
 
-Apple does not document the ED flag of assertions. The rule above follows a real iOS 27 assertion (flags `0xC0` with extensions). If every assertion from one OS version fails with `malformed_input`, that version writes extensions without the flag: please [open an issue](https://github.com/jewei/app-attest-php/issues) with a sample. Remove user and session values from the client data first, or send the sample privately (see [SECURITY.md](SECURITY.md)).
+Apple says that the extensions follow the WebAuthn authenticator data format (WWDC26 session 201), where the ED flag marks them; the rule above follows that and a real iOS 27 assertion (flags `0xC0` with extensions). If every assertion from one OS version fails with `malformed_input`, that version writes extensions without the flag: please [open an issue](https://github.com/jewei/app-attest-php/issues) with a sample. Remove user and session values from the client data first, or send the sample privately (see [SECURITY.md](SECURITY.md)).
 
 ## Failures
 
@@ -163,7 +163,7 @@ The package empties OpenSSL's error queue (`openssl_error_string()`) after its c
 - 64-bit PHP only: Composer requires `php-64bit`, and the constructor refuses a 32-bit build.
 - Attestations up to 32 KB and assertions up to 4 KB (`Verifier::MAX_ATTESTATION_BYTES`, `Verifier::MAX_ASSERTION_BYTES`).
 - The CBOR decoder accepts only definite-length integers, byte strings, text strings, arrays, maps, false, true, and null, with at most 8 levels and 64 entries per container. It accepts a length or integer in a longer form than needed, because the value is the same and the signed data is hashed as raw bytes.
-- iPhone and iPad keys only. A key whose certificate names another platform, such as macOS, is refused (`UnsupportedPlatform`): on macOS the RP ID uses the signing identifier, and Apple requires an `aclBlob` check that this package does not make. Certificates without the platform field are accepted. Tests use iOS data.
+- iPhone and iPad keys only. From the 2026 OS releases, App Attest works on all Apple platforms. Keys from macOS (also an iPad app on a Mac), tvOS, watchOS, and visionOS are refused with `UnsupportedPlatform`: their platform field is not `iphoneos`, or (on a Mac) the key carries Apple's macOS access-control blob. Treat `unsupported_platform` as an unsupported device, not as proof of fraud. Certificates without the platform field are accepted. Tests use iOS data; no real attestation from a Mac is in `spec/` yet, so the values that an iPad app on a Mac writes are not confirmed. If you must refuse Macs, also turn off the app's availability on Mac in App Store Connect.
 
 ## Test your integration
 

@@ -187,7 +187,6 @@ it('reads validity times in UTC', function (int $tag, string $time, int $expecte
     'UTCTime 49 is 2049' => [0x17, '491231235959Z', gmmktime(23, 59, 59, 12, 31, 2049)],
     'GeneralizedTime' => [0x18, '20500101000000Z', gmmktime(0, 0, 0, 1, 1, 2050)],
     'leap day' => [0x17, '280229120000Z', gmmktime(12, 0, 0, 2, 29, 2028)],
-    'GeneralizedTime in 2050' => [0x18, '20500101000000Z', gmmktime(0, 0, 0, 1, 1, 2050)],
 ]);
 
 it('does not depend on the process time zone', function (): void {

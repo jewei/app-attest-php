@@ -7,7 +7,7 @@ namespace AppAttest;
 /**
  * Which validation categories (apple_validation_category_01) the verifier accepts.
  *
- * Devices on older iOS versions may write no category. only() refuses them; onlyOrMissing() accepts them.
+ * Devices write the category from iOS 27; iOS 26 and earlier write none. only() refuses them; onlyOrMissing() accepts them.
  * Every policy refuses 0 (invalid), 7 to 9 (not appropriate for apps), and values that ValidationCategory does
  * not name yet.
  */

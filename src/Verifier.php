@@ -50,14 +50,15 @@ final readonly class Verifier
     /** OID 1.2.840.113635.100.8.6, the key's access-control (aclBlob) extension, as DER content bytes. */
     private const string ACL_OID = "\x2A\x86\x48\x86\xF7\x63\x64\x08\x06";
 
-    /** The aclBlob that Apple documents for macOS keys (Base64), which only macOS writes. */
+    /** The aclBlob that Apple documents for macOS keys (Base64): every App Attest key on macOS 27 has this policy. */
     private const string MACOS_ACL = 'MEAMAjExMDowCQwCb2uhAwEB/zAJDAJvYaEDAQH/MAsMBG9kZWyhAwEB/zAVDARvc2duoAYMBHJzZWMwBaYDAgEB';
 
     private TrustAnchor $trustAnchor;
 
     /**
      * @param  CategoryPolicy  $categories  Which validation categories to accept, for example
-     *                                      CategoryPolicy::only(ValidationCategory::AppStore, ValidationCategory::TestFlight).
+     *                                      CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore, ValidationCategory::TestFlight)
+     *                                      (devices on iOS 26 and earlier write no category).
      * @param  string|null  $trustAnchor  A PEM root certificate, for tests with your own test CA. Null uses the
      *                                    pinned Apple App Attestation Root CA. Never set it in production.
      *
@@ -299,6 +300,7 @@ final readonly class Verifier
     {
         $details = OpenSsl::quietly(static fn (): array|false => openssl_pkey_get_details($key));
 
+        // Defensive shape checks: the DER check already proved an EC key on a named curve.
         if (! is_array($details) || ($details['type'] ?? null) !== OPENSSL_KEYTYPE_EC || ! is_array($details['ec'] ?? null)) {
             return null;
         }

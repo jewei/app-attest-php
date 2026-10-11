@@ -1,6 +1,14 @@
 name: Mutation tests
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'composer.json'
+      - 'phpunit.xml'
+      - '.github/workflows/mutation.yml'
   pull_request:
     paths:
       - 'src/**'

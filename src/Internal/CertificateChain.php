@@ -93,6 +93,7 @@ final class CertificateChain
         $exported = $certificate === false ? false : OpenSsl::quietly(static fn (): string|false => openssl_x509_export($certificate, $out) && is_string($out) ? $out : false);
         $der = $exported === false ? false : base64_decode((string) preg_replace('/-----[^-]+-----|\s/', '', $exported), true);
 
+        // The export and Base64 parts are untested: OpenSSL exports any certificate that it read.
         if ($certificate === false || $der === false) {
             throw new InvalidArgumentException('The trust anchor cannot be read.');
         }
