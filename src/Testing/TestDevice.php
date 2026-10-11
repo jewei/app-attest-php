@@ -72,6 +72,7 @@ final class TestDevice
         $authenticatorData = $this->appId->hash().($extensions === '' ? "\x40" : "\xC0").pack('N', $this->counter).$extensions;
         $nonce = hash('sha256', $authenticatorData.hash('sha256', $clientData, true), true);
 
+        // Untested: OpenSSL signs with any P-256 key that TestAuthority makes.
         if (! openssl_sign($nonce, $signature, $this->key, OPENSSL_ALGO_SHA256) || ! is_string($signature)) {
             throw new RuntimeException('openssl_sign failed.');
         }

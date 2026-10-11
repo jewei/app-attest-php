@@ -26,10 +26,19 @@ it('refuses an App ID prefix that is not 10 uppercase letters or digits', functi
 
 it('refuses a bundle ID with other characters', function (string $bundleId): void {
     expect(fn () => new AppId('ABCDE12345', $bundleId))->toThrow(\InvalidArgumentException::class);
-})->with(['', '.com.example', 'com.example.', 'com..example', 'com.exa mple', 'com.example_app', "com.example\n", str_repeat('a', 256)]);
+})->with(['', '.com.example', 'com.example.', 'com..example', 'com.exa mple', 'com.example+app', "com.example\n", str_repeat('a', 256)]);
 
 it('accepts a bundle ID of 255 characters', function (): void {
     expect((new AppId('ABCDE12345', str_repeat('a', 255)))->bundleId)->toHaveLength(255);
+});
+
+it('accepts the underscore of Apple\'s sample App ID', function (): void {
+    expect((string) AppId::fromString('0352187391.com.apple.example_app_attest'))->toBe('0352187391.com.apple.example_app_attest');
+});
+
+it('keeps the public input limits', function (): void {
+    expect(Verifier::MAX_ATTESTATION_BYTES)->toBe(32768)
+        ->and(Verifier::MAX_ASSERTION_BYTES)->toBe(4096);
 });
 
 it('refuses an App ID string without a period', function (): void {

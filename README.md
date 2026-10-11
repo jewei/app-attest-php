@@ -26,7 +26,9 @@ $verifier = new Verifier(
 );
 ```
 
-The [category policy](#validation-categories) is required. For an App Clip, use the full app's bundle ID: Apple builds the App Clip's RP ID from it.
+The [category policy](#validation-categories) is required. `only()` refuses a device that writes no category, at attestation and at every assertion: Apple's iOS 27 sample writes one, but Apple's earlier sample (iOS 18.0) writes none. If your app supports such iOS versions, use `onlyOrMissing()` and accept that those devices get no category check.
+
+For an App Clip, use the full app's bundle ID: Apple builds the App Clip's RP ID from it. Write the bundle ID in the exact case of the app's entitlement: the RP ID hash is case-sensitive.
 
 ## Verify an attestation
 
@@ -58,7 +60,7 @@ try {
 // (unverified: see below).
 ```
 
-Apple's credential certificate is valid from the second that Apple issued it. Keep the server clock in sync (NTP): a server clock that is behind Apple's refuses a fresh attestation with `invalid_certificate`.
+The credential certificate is valid for 3 days (in Apple's samples, from 24 hours before the time in its serial number). Verify the attestation when the app sends it, and keep the server clock in sync (NTP).
 
 ## Verify an assertion
 
@@ -71,7 +73,7 @@ try {
         clientData: $clientData,
         publicKey: $stored->publicKey,
         previousCounter: $stored->counter,
-        keyEnvironment: $stored->environment, // the key's stored environment
+        keyEnvironment: Environment::from($stored->environment), // the key's stored environment
     );
 } catch (VerificationException $exception) {
     return refuse();
@@ -116,7 +118,7 @@ The package checks the cryptography and the data. Your server must also:
 
 ## Validation categories
 
-Apple's current documentation adds `apple_validation_category_01` (how the app's code is signed) and `apple_bundle_version_01` to the authenticator data. (Its assertion steps call them `validationCategory` and `bundleVersion`; the real assertion in `spec/` uses the `_01` keys, so the package reads those.) Apple's sample attestation and the real iOS 27 assertion in `spec/` have both; devices on older iOS versions may not write them. Both results expose them as `validationCategory` (a `ValidationCategory`, or null) and `bundleVersion` (a string, or null).
+Apple's current documentation adds `apple_validation_category_01` (how the app's code is signed) and `apple_bundle_version_01` to the authenticator data. (Its assertion steps call them `validationCategory` and `bundleVersion`; the real assertion in `spec/` uses the `_01` keys, so the package reads those.) Apple's sample attestation (iOS 27) and the real iOS 27 assertion in `spec/` have both; Apple's earlier sample (iOS 18.0) has neither, so devices on older iOS versions may not write them. Both results expose them as `validationCategory` (a `ValidationCategory`, or null) and `bundleVersion` (a string, or null).
 
 | Policy | Result |
 | --- | --- |
@@ -124,7 +126,7 @@ Apple's current documentation adds `apple_validation_category_01` (how the app's
 | `CategoryPolicy::onlyOrMissing(...)` | The listed categories, or none (devices on older iOS versions). |
 | `CategoryPolicy::any()` | Every category that `ValidationCategory` names, and a missing one: also `OperatingSystem` (1) and `Other` (10), which point to code that Apple did not sign for distribution to you, such as a re-signed or sideloaded app. For tests and diagnostics, not production. |
 
-A third-party app that Apple distributes reports `AppStore` or `TestFlight`, and a build from Xcode reports `Development`. The verifier always refuses 0 (invalid), 7 to 9 (Apple: binaries that the system generates in restricted situations, not appropriate), and values that `ValidationCategory` does not name yet.
+A third-party app that Apple distributes reports `AppStore` or `TestFlight`, and a build that Xcode runs with a development profile reports `Development`. The verifier always refuses 0 (invalid), 7 to 9 (Apple: binaries that the system generates in restricted situations, not appropriate), and values that `ValidationCategory` does not name yet.
 
 The app chooses the client data hash, and nothing in the signed bytes marks where the authenticator data ends. In an assertion the ED flag closes that gap. Apple's attestations do not set the ED flag, so on a device that writes no extensions, a modified app can make an attestation carry any category. The verifier checks the policy again on every assertion, where it cannot be forged, so base your decisions on assertions; treat the attestation's category and bundle version as a hint.
 

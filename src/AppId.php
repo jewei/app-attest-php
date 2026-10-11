@@ -21,8 +21,10 @@ final readonly class AppId implements Stringable
             throw new InvalidArgumentException('The App ID prefix must be 10 uppercase letters or digits.');
         }
 
-        if (strlen($bundleId) > 255 || preg_match('/^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$/D', $bundleId) !== 1) {
-            throw new InvalidArgumentException('The bundle ID must be letters, digits, and hyphens, separated by periods.');
+        // Apple's bundle IDs use letters, digits, and hyphens; Apple's own App Attest sample also uses underscores.
+        // The RP ID hash is the real check, so this only catches typing errors.
+        if (strlen($bundleId) > 255 || preg_match('/^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/D', $bundleId) !== 1) {
+            throw new InvalidArgumentException('The bundle ID must be letters, digits, hyphens, and underscores, separated by periods.');
         }
     }
 

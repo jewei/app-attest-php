@@ -62,7 +62,7 @@ jobs:
 
       - name: Enforce coverage
         if: inputs.check == 'coverage'
-        run: vendor/bin/pest --coverage --min=90
+        run: vendor/bin/pest --coverage --min=97
 
       - name: Check code style
         if: inputs.check == 'style'

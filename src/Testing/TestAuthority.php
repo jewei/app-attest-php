@@ -84,6 +84,7 @@ final readonly class TestAuthority
     ): OpenSSLCertificate {
         $config = tempnam(sys_get_temp_dir(), 'app-attest-test-');
 
+        // Untested: only a full or read-only temporary directory reaches this.
         if ($config === false) {
             throw new RuntimeException('tempnam failed.');
         }
@@ -96,6 +97,7 @@ final readonly class TestAuthority
                 ? openssl_csr_sign($csr, $issuer, $issuerKey, $days, $options, random_int(1, PHP_INT_MAX))
                 : false;
 
+            // Untested: OpenSSL signs any CSR that this class builds.
             return $certificate !== false ? $certificate : throw new RuntimeException('Signing a test certificate failed.');
         } finally {
             unlink($config);
