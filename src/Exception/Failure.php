@@ -15,8 +15,8 @@ enum Failure: string
     /** The attestation format is not `apple-appattest`. */
     case UnsupportedFormat = 'unsupported_format';
     /**
-     * The credential certificate names a platform other than iPhone and iPad (`iphoneos`), such as macOS, or has
-     * Apple's macOS access-control blob.
+     * The credential certificate names a platform other than iPhone and iPad (`iphoneos`), such as macOS, has
+     * Apple's macOS access-control blob, or has an access-control blob without the platform field.
      */
     case UnsupportedPlatform = 'unsupported_platform';
     /**

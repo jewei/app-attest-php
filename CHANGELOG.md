@@ -20,4 +20,4 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `AppAttest\Testing\TestAuthority` and `TestDevice`, for tests of applications that use the verifier.
 - `CategoryPolicy::only()`, `onlyOrMissing()`, and `any()` for the validation category.
 - `SECURITY.md`: private vulnerability reports.
-- `Failure::UnsupportedPlatform` for keys whose certificate names a platform other than `iphoneos`, or carries Apple's macOS access-control blob.
+- `Failure::UnsupportedPlatform` for keys whose certificate names a platform other than `iphoneos`, carries Apple's macOS access-control blob, or carries an access-control blob without the platform field.
