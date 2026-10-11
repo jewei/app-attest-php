@@ -16,14 +16,15 @@ enum Failure: string
     case UnsupportedFormat = 'unsupported_format';
     /**
      * The credential certificate names a platform other than iPhone and iPad (`iphoneos`), such as macOS, has
-     * Apple's macOS access-control blob, or has an access-control blob without the platform field.
+     * Apple's macOS access-control blob, or has an access-control blob without the platform extension.
      */
     case UnsupportedPlatform = 'unsupported_platform';
     /**
      * A certificate is malformed or not strict DER; the chain does not lead to the trust anchor; the intermediate
      * has the anchor's key or is self-issued; a certificate is not valid at the check time; a CA flag, key usage,
      * or critical extension is wrong; a key is on another curve; the nonce extension is missing or malformed; or
-     * the platform extension is malformed.
+     * the platform extension is malformed, or has no platform field next to an access-control blob (a changed
+     * layout).
      */
     case InvalidCertificate = 'invalid_certificate';
     /** The credential certificate's nonce is not SHA-256(authData || clientDataHash). */

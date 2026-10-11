@@ -41,6 +41,7 @@ final class TestDevice
         private readonly string $bundleVersion,
     ) {
         $details = openssl_pkey_get_details($key);
+        // Untested fallbacks: TestAuthority::device() always passes an EC P-256 key, whose details have x and y.
         $x = is_array($details) && is_array($details['ec'] ?? null) && is_string($details['ec']['x'] ?? null) ? $details['ec']['x'] : '';
         $y = is_array($details) && is_array($details['ec'] ?? null) && is_string($details['ec']['y'] ?? null) ? $details['ec']['y'] : '';
         $this->point = "\x04".str_pad($x, 32, "\0", STR_PAD_LEFT).str_pad($y, 32, "\0", STR_PAD_LEFT);

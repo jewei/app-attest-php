@@ -37,11 +37,14 @@ it('writes App Attest data as a device does', function (): void {
 
 it('writes no extensions and the AT flag only without a category', function (): void {
     $device = TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'), category: null);
+    $attestation = Cbor::decode($device->attest(hash('sha256', 'c', true)));
+    $authData = $attestation instanceof CborMap && $attestation->get('authData') instanceof ByteString ? $attestation->get('authData')->value : '';
     $assertion = Cbor::decode($device->assert('GET /me'));
     $authenticatorData = $assertion instanceof CborMap && $assertion->get('authenticatorData') instanceof ByteString ? $assertion->get('authenticatorData')->value : '';
 
     expect(strlen($authenticatorData))->toBe(37)
-        ->and(ord($authenticatorData[32]))->toBe(0x40);
+        ->and(ord($authenticatorData[32]))->toBe(0x40)
+        ->and(ord($authData[32]))->toBe(0x40);
 });
 
 it('issues credential certificates for 3 days and CA certificates for 10 years, and leaves no temporary files', function (): void {

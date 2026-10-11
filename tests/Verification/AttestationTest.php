@@ -527,6 +527,12 @@ it('refuses a key with Apple\'s macOS access-control blob, and an access-control
     'a blob and a platform extension without the field (a changed layout)' => ['no field', 'an iOS policy', Failure::InvalidCertificate],
 ]);
 
+it('accepts the 2021 layout: a platform extension without the field and no access-control blob', function (): void {
+    $lines = "basicConstraints = critical,CA:FALSE\n".TestAuthority::platformFields("\xBF\x8A\x78\x02\x04\x00");
+
+    expect(attestationFailure(['credentialExtensions' => $lines]))->toBeNull();
+});
+
 it('names the reason for each platform refusal', function (string $lines, string $message): void {
     try {
         testVerifier()->verifyAttestation(...array_values(array_intersect_key(testAttestation(['credentialExtensions' => "basicConstraints = critical,CA:FALSE\n".$lines]), ['attestation' => 0, 'keyId' => 0])), clientDataHash: testClientDataHash());
