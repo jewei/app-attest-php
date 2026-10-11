@@ -51,7 +51,7 @@ final readonly class Verifier
     /** OID 1.2.840.113635.100.8.6, the key's access-control (aclBlob) extension, as DER content bytes. */
     private const string ACL_OID = "\x2A\x86\x48\x86\xF7\x63\x64\x08\x06";
 
-    /** The aclBlob that Apple documents for macOS keys (Base64): every App Attest key on macOS 27 has this policy. */
+    /** The aclBlob that Apple documents for macOS keys (Base64): a Mac with full security and SIP on writes it. */
     private const string MACOS_ACL = 'MEAMAjExMDowCQwCb2uhAwEB/zAJDAJvYaEDAQH/MAsMBG9kZWyhAwEB/zAVDARvc2duoAYMBHJzZWMwBaYDAgEB';
 
     private TrustAnchor $trustAnchor;
@@ -138,14 +138,16 @@ final readonly class Verifier
         }
 
         // A key whose certificate names another platform, such as macOS, needs checks that this package does
-        // not make (the aclBlob extension), so it is refused. Certificates without the field are accepted.
+        // not make, so it is refused. Apple's documented macOS aclBlob is refused too. A Mac with System Integrity
+        // Protection off writes another blob, so a certificate with an aclBlob must also name its platform; a
+        // certificate with neither (iOS 26 and earlier) is accepted.
         $platformExtension = Der::extensionValue($credential['extensions'], self::PLATFORM_OID);
         $platform = $platformExtension === null ? null : Der::platform($platformExtension);
 
         $acl = Der::extensionValue($credential['extensions'], self::ACL_OID);
         $macAcl = (string) base64_decode(self::MACOS_ACL, true);
 
-        if (($platform !== null && $platform !== self::IOS_PLATFORM) || ($acl !== null && str_contains($acl, $macAcl))) {
+        if (($platform !== null && $platform !== self::IOS_PLATFORM) || ($acl !== null && ($platform === null || str_contains($acl, $macAcl)))) {
             throw self::fail(Failure::UnsupportedPlatform, 'The key is from a platform other than iPhone and iPad.');
         }
 

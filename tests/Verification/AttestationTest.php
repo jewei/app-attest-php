@@ -509,14 +509,18 @@ it('reads the platform field among other fields', function (string $extraFields,
     'a universal field' => ["\x04\x01\x00", Failure::InvalidCertificate],
 ]);
 
-it('refuses a key with Apple\'s macOS access-control blob, even without a platform field', function (): void {
+it('refuses a key with Apple\'s macOS access-control blob, and an access-control blob without a platform field', function (?string $platform, string $acl, ?Failure $failure): void {
     $macAcl = (string) base64_decode('MEAMAjExMDowCQwCb2uhAwEB/zAJDAJvYaEDAQH/MAsMBG9kZWyhAwEB/zAVDARvc2duoAYMBHJzZWMwBaYDAgEB', true);
+    $lines = "basicConstraints = critical,CA:FALSE\n".TestAuthority::aclExtension($acl === 'mac' ? $macAcl : $acl)
+        .($platform === null ? '' : "\n".TestAuthority::platformExtension($platform));
 
-    expect(attestationFailure(['credentialExtensions' => "basicConstraints = critical,CA:FALSE\n".TestAuthority::aclExtension($macAcl)]))
-        ->toBe(Failure::UnsupportedPlatform)
-        ->and(attestationFailure(['credentialExtensions' => "basicConstraints = critical,CA:FALSE\n".TestAuthority::aclExtension('an iOS policy')]))
-        ->toBeNull();
-});
+    expect(attestationFailure(['credentialExtensions' => $lines]))->toBe($failure);
+})->with([
+    'the macOS blob without a platform field' => [null, 'mac', Failure::UnsupportedPlatform],
+    'the macOS blob with iphoneos' => ['iphoneos', 'mac', Failure::UnsupportedPlatform],
+    'another blob without a platform field (a Mac with SIP off)' => [null, 'another policy', Failure::UnsupportedPlatform],
+    'an iOS blob with iphoneos (iOS 27)' => ['iphoneos', 'an iOS policy', null],
+]);
 
 it('refuses an intermediate with the anchor\'s key under another name', function (): void {
     $intermediate = TestAuthority::shared()->customIntermediate('Another App Attestation CA', anchorKey: true);

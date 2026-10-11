@@ -64,7 +64,7 @@ Field `[1026]` of the certificate extension `1.2.840.113635.100.8.7`: the platfo
 
 ### aclBlob
 
-The certificate extension `1.2.840.113635.100.8.6`: the key's access-control policy. On macOS it requires full security mode and System Integrity Protection.
+The certificate extension `1.2.840.113635.100.8.6`: the key's access-control policy, from the 2026 OS releases. On macOS it requires full security mode and System Integrity Protection; a Mac with System Integrity Protection off writes another value.
 
 ### Environment
 
