@@ -20,6 +20,7 @@ use InvalidArgumentException;
 use OpenSSLAsymmetricKey;
 use OpenSSLCertificate;
 use RuntimeException;
+use SensitiveParameter;
 
 /**
  * Verifies App Attest attestations and assertions for one App ID and environment,
@@ -179,6 +180,7 @@ final readonly class Verifier
         return new AttestedKey(
             $keyId,
             $publicKey,
+            $x5c[0]->value,
             $receipt,
             $this->environment,
             $this->category($data->validationCategory),
@@ -202,7 +204,7 @@ final readonly class Verifier
      */
     public function verifyAssertion(
         string $assertion,
-        string $clientData,
+        #[SensitiveParameter] string $clientData,
         string $publicKey,
         int $previousCounter,
         Environment $keyEnvironment,

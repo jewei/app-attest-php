@@ -208,6 +208,7 @@ final class Der
     {
         $bits = self::whole($value, self::BIT_STRING, 'keyUsage');
 
+        // Untested on its own: the unused-bit checks below also refuse every content of 0 or 1 bytes.
         $unused = $bits['end'] - $bits['start'] < 2 ? 8 : ord($value[$bits['start']]);
 
         if ($unused > 7) {
@@ -483,6 +484,7 @@ final class Der
     {
         $content = self::content($data, $element);
 
+        // Untested on its own: every caller refuses anything that is not TRUE (0xFF) anyway.
         if ($content !== "\x00" && $content !== "\xFF") {
             throw self::invalid('A DER BOOLEAN is not 0x00 or 0xFF.');
         }

@@ -92,7 +92,7 @@ The package checks the cryptography and the data. Your server must also:
 - Store each key's environment with it, and pass it back as `keyEnvironment`. Build the verifier's environment from your server configuration, never from the stored key, so that a development key cannot pass a production verifier.
 - Refuse a key ID that another account already uses.
 - Check `bundleVersion` if you need a minimum app version. The package returns it and does not compare versions.
-- Verify the receipt and request the fraud risk metric yourself, if you use it ([Assessing fraud risk](https://developer.apple.com/documentation/devicecheck/assessing-fraud-risk)). The package returns the receipt bytes and does not check them. The attestation does not sign the receipt, so an attacker can put in the receipt of another key: before you store or use it, verify its Apple signature, that its App ID, public key, and server challenge match this attestation, and that its creation time is no more than five minutes old.
+- Verify the receipt and request the fraud risk metric yourself, if you use it ([Assessing fraud risk](https://developer.apple.com/documentation/devicecheck/assessing-fraud-risk)). The package returns the receipt bytes and does not check them. The attestation does not sign the receipt, so an attacker can put in the receipt of another key. Before you store or use it, verify its signature chain to Apple Root CA - G3, then its fields: 2 is the App ID; 3 is the credential certificate, equal to `$key->certificate`; 4 is the client data hash that you passed; 12, the creation time, is no more than five minutes old.
 
 ## Checks
 
@@ -124,7 +124,7 @@ Apple's current documentation adds `apple_validation_category_01` (how the app's
 | --- | --- |
 | `CategoryPolicy::only(...)` | Only the listed categories. A missing category fails, so devices on iOS 26 and earlier are refused. For apps that need iOS 27 or later. |
 | `CategoryPolicy::onlyOrMissing(...)` | The listed categories, or none (devices on iOS 26 and earlier). |
-| `CategoryPolicy::any()` | Every category that `ValidationCategory` names, and a missing one: also `OperatingSystem` (1) and `Other` (10), which point to code that Apple did not sign for distribution to you, such as a re-signed or sideloaded app. For tests and diagnostics, not production. |
+| `CategoryPolicy::any()` | Every category that `ValidationCategory` names, and a missing one: also `OperatingSystem` (1) and `Other` (10), which point to a jailbroken device (1) or a re-signed or sideloaded app (10). For tests and diagnostics, not production. |
 
 A third-party app that Apple distributes reports `AppStore` or `TestFlight`, and a build that Xcode runs with a development profile reports `Development`. The verifier always refuses 0 (invalid), 7 to 9 (Apple: binaries that the system generates in restricted situations, not appropriate), and values that `ValidationCategory` does not name yet.
 
@@ -162,8 +162,10 @@ The package empties OpenSSL's error queue (`openssl_error_string()`) after its c
 
 - 64-bit PHP only: Composer requires `php-64bit`, and the constructor refuses a 32-bit build.
 - Attestations up to 32 KB and assertions up to 4 KB (`Verifier::MAX_ATTESTATION_BYTES`, `Verifier::MAX_ASSERTION_BYTES`).
+- `x5c` must hold exactly the credential certificate and one intermediate, as Apple sends today. Apple's intermediate "Apple App Attestation CA 1" is valid until 2030-03-13; watch for a change in the chain before then.
+- `invalid_certificate` covers a forged or broken chain and also a certificate that is not valid at the check time (a late check or a wrong server clock).
 - The CBOR decoder accepts only definite-length integers, byte strings, text strings, arrays, maps, false, true, and null, with at most 8 levels and 64 entries per container. It accepts a length or integer in a longer form than needed, because the value is the same and the signed data is hashed as raw bytes.
-- iPhone and iPad keys only. From the 2026 OS releases, App Attest works on all Apple platforms. Keys from macOS (also an iPad app on a Mac), tvOS, watchOS, and visionOS are refused with `UnsupportedPlatform`: their platform field is not `iphoneos`, or (on a Mac) the key carries Apple's macOS access-control blob. Treat `unsupported_platform` as an unsupported device, not as proof of fraud. Certificates without the platform field are accepted. Tests use iOS data; no real attestation from a Mac is in `spec/` yet, so the values that an iPad app on a Mac writes are not confirmed. If you must refuse Macs, also turn off the app's availability on Mac in App Store Connect.
+- iPhone and iPad keys only. From the 2026 OS releases, App Attest works on all Apple platforms. Keys from macOS (also an iPad app on a Mac), tvOS, watchOS, and visionOS are refused with `UnsupportedPlatform`: their platform field is not `iphoneos`, or (on a Mac) the key carries Apple's macOS access-control blob. Treat `unsupported_platform` as an unsupported device, not as proof of fraud. Certificates without the platform field are accepted. Tests use iOS data; no real attestation from another platform is in `spec/` yet, so the values that tvOS, watchOS, visionOS, macOS, and an iPad app on a Mac or on visionOS write are not confirmed. If you must refuse Macs, also turn off the app's availability on Mac in App Store Connect.
 
 ## Test your integration
 

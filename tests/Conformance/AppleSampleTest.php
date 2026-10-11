@@ -19,6 +19,12 @@ it('verifies Apple\'s sample attestation with the pinned root', function (): voi
         ->and($key->bundleVersion)->toBe(specString($sample['expected'], 'bundleVersion'))
         ->and($key->receipt)->not->toBe('')
         ->and($key->publicKey)->toStartWith('-----BEGIN PUBLIC KEY-----');
+
+    // The credential certificate that the receipt's field 3 must equal: its key is the attested key.
+    $pem = "-----BEGIN CERTIFICATE-----\n".chunk_split(base64_encode($key->certificate), 64, "\n")."-----END CERTIFICATE-----\n";
+    $details = openssl_pkey_get_details(openssl_pkey_get_public($pem) ?: throw new \RuntimeException('No key.'));
+
+    expect(is_array($details) ? $details['key'] ?? null : null)->toBe($key->publicKey);
 });
 
 it('derives the key ID from the X9.62 uncompressed point of the sample key', function (): void {

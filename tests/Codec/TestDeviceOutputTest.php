@@ -6,6 +6,7 @@ use AppAttest\AppId;
 use AppAttest\Internal\ByteString;
 use AppAttest\Internal\Cbor;
 use AppAttest\Internal\CborMap;
+use AppAttest\Internal\Der;
 use AppAttest\Testing\TestAuthority;
 
 it('writes App Attest data as a device does', function (): void {
@@ -41,4 +42,19 @@ it('writes no extensions and the AT flag only without a category', function (): 
 
     expect(strlen($authenticatorData))->toBe(37)
         ->and(ord($authenticatorData[32]))->toBe(0x40);
+});
+
+it('issues credential certificates for 3 days and CA certificates for 10 years, and leaves no temporary files', function (): void {
+    $pattern = sys_get_temp_dir().'/app-attest-test-*';
+    $before = glob($pattern) ?: [];
+    $device = TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'));
+    $attestation = Cbor::decode($device->attest(hash('sha256', 'c', true)));
+    $statement = $attestation instanceof CborMap ? $attestation->get('attStmt') : null;
+    $x5c = $statement instanceof CborMap ? $statement->get('x5c') : null;
+    $credential = is_array($x5c) && $x5c[0] instanceof ByteString ? Der::certificate($x5c[0]->value) : null;
+    $intermediate = is_array($x5c) && $x5c[1] instanceof ByteString ? Der::certificate($x5c[1]->value) : null;
+
+    expect($credential === null ? null : $credential['notAfter'] - $credential['notBefore'])->toBe(3 * 86400)
+        ->and($intermediate === null ? null : $intermediate['notAfter'] - $intermediate['notBefore'])->toBe(3650 * 86400)
+        ->and(glob($pattern) ?: [])->toBe($before);
 });

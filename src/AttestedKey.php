@@ -17,9 +17,12 @@ final readonly class AttestedKey
         public string $keyId,
         /** The public key as a PEM SubjectPublicKeyInfo. */
         public string $publicKey,
+        /** The credential certificate (DER), which the receipt's field 3 must equal. */
+        public string $certificate,
         /**
          * The receipt for Apple's fraud risk metric (raw bytes). Not verified: the attestation does not sign it, so
-         * check its Apple signature, App ID, and public key before you store or use it.
+         * check its Apple signature (to Apple Root CA - G3), App ID (field 2), credential certificate (field 3, equal to
+         * $certificate), client data hash (field 4), and creation time (field 12) before you store or use it.
          */
         public string $receipt,
         public Environment $environment,
