@@ -68,6 +68,7 @@ it('refuses lengths and tags outside DER', function (string $data): void {
     'indefinite at the end' => ["\x30\x80"],
     'indefinite before 128 bytes' => ["\x04\x80".str_repeat('A', 128)],
     'long form for 127 bytes' => ["\x04\x81\x7F".str_repeat('A', 127)],
+    'a 9-byte length that wraps to 133' => ["\x04\x89\x01".str_repeat("\x00", 7)."\x85".str_repeat('A', 133)],
     'non-minimal long form' => ["\x04\x81\x05AAAAA"],
     'leading zero' => ["\x04\x82\x00\x80".str_repeat('A', 128)],
     'five length bytes' => ["\x04\x85\x01\x00\x00\x00\x00"],
@@ -259,6 +260,7 @@ it('refuses malformed basicConstraints', function (string $value): void {
     'path length of three bytes' => ["\x30\x08\x01\x01\xFF\x02\x03\x01\x00\x00"],
     'empty path length' => ["\x30\x05\x01\x01\xFF\x02\x00"],
     'path length before the flag' => ["\x30\x06\x02\x01\x01\x01\x01\xFF"],
+    'the flag as an OCTET STRING' => ["\x30\x03\x04\x01\xFF"],
     'extra field' => ["\x30\x05\x01\x01\xFF\x05\x00"],
     'trailing byte' => ["\x30\x03\x01\x01\xFF\x00"],
 ]);
@@ -281,6 +283,7 @@ it('refuses malformed keyUsage', function (string $value): void {
 })->with([
     'the text Certificate Sign' => ['Certificate Sign'],
     'no bits' => ["\x03\x01\x00"],
+    'an empty BIT STRING' => ["\x03\x00"],
     'eight unused bits' => ["\x03\x02\x08\x04"],
     'keyCertSign in the unused bits' => ["\x03\x02\x03\x04"],
     'keyCertSign under five unused bits' => ["\x03\x02\x05\x04"],

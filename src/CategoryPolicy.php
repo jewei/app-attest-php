@@ -45,5 +45,4 @@ final readonly class CategoryPolicy
 
         return $this->categories === null || in_array($category, $this->categories, true);
     }
-
 }

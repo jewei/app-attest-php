@@ -125,6 +125,9 @@ it('refuses an object that is not Apple\'s structure', function (\Closure $mutat
     'short authenticatorData' => [static function (AssertionObject $object): void {
         $object->authenticatorData = new Bytes(substr($object->authenticatorDataBytes(), 0, 36));
     }],
+    'short authenticatorData without the ED flag' => [static function (AssertionObject $object): void {
+        $object->authenticatorData = new Bytes(substr($object->authenticatorDataBytes(), 0, 32)."\x40\0\0\0");
+    }],
 ]);
 
 it('refuses malformed extensions before the signature check', function (): void {
@@ -233,7 +236,8 @@ it('refuses a written null category or bundle version', function (string $name):
 })->with(['apple_validation_category_01', 'apple_bundle_version_01']);
 
 it('refuses one trailing byte without the ED flag', function (): void {
-    expect(assertionFailure(options: ['flags' => "\x40", 'extensions' => "\x00"]))->toBe(Failure::MalformedInput)
+    // An empty CBOR map would be valid extensions, so only the missing ED flag refuses it.
+    expect(assertionFailure(options: ['flags' => "\x40", 'extensions' => "\xA0"]))->toBe(Failure::MalformedInput)
         ->and(assertionFailure(options: ['flags' => "\x40", 'extensions' => null]))->toBeNull();
 });
 

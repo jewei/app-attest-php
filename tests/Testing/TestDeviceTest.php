@@ -7,6 +7,7 @@ use AppAttest\CategoryPolicy;
 use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\Testing\TestAuthority;
+use AppAttest\Testing\TestDevice;
 use AppAttest\ValidationCategory;
 use AppAttest\Verifier;
 
@@ -60,4 +61,38 @@ it('refuses test inputs that the verifier could not read', function (\Closure $c
 })->with([
     'a bundle version that is not UTF-8' => [fn () => TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'), bundleVersion: "\xFF\xFE")],
     'an empty bundle version' => [fn () => TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'), bundleVersion: '')],
+    'a bundle version over 255 bytes' => [fn () => TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'), bundleVersion: str_repeat('1', 256))],
+]);
+
+it('accepts a bundle version of 255 bytes', function (): void {
+    $device = TestAuthority::create()->device(new AppId('ABCDE12345', 'com.example.app'), bundleVersion: str_repeat('1', 255));
+
+    expect($device->assert('GET /me'))->toContain(str_repeat('1', 255));
+});
+
+it('leaves no errors in the OpenSSL error queue', function (): void {
+    while (openssl_error_string() !== false) {
+        // Start with an empty queue.
+    }
+
+    $authority = TestAuthority::create();
+    $device = $authority->device(new AppId('ABCDE12345', 'com.example.app'));
+    $device->attest(hash('sha256', 'challenge', true));
+    $device->assert('GET /me');
+
+    expect(openssl_error_string())->toBeFalse();
+});
+
+it('pads a key coordinate with a leading zero byte in the key ID', function (string $name): void {
+    $key = openssl_pkey_get_private((string) file_get_contents(__DIR__."/../Fixtures/{$name}.pem"));
+    $details = $key === false ? false : openssl_pkey_get_details($key);
+    $ec = is_array($details) && is_array($details['ec'] ?? null) ? $details['ec'] : [];
+    $x = is_string($ec['x'] ?? null) ? $ec['x'] : '';
+    $y = is_string($ec['y'] ?? null) ? $ec['y'] : '';
+    $device = new TestDevice(static fn (): array => ['', ''], $key === false ? throw new \RuntimeException('fixture') : $key,
+        new AppId('ABCDE12345', 'com.example.app'), Environment::Production, null, '1.0');
+
+    expect(strlen($x) + strlen($y))->toBeLessThan(64)
+        ->and($device->keyId)->toBe(hash('sha256', "\x04".str_pad($x, 32, "\0", STR_PAD_LEFT).str_pad($y, 32, "\0", STR_PAD_LEFT), true));
+})->with(['p256-leading-zero-x', 'p256-leading-zero-y',
 ]);

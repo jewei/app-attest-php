@@ -125,10 +125,7 @@ final readonly class TestAuthority
      */
     private function issue(OpenSSLAsymmetricKey $key, string $keyId, string $nonce): array
     {
-        if (strlen($keyId) !== 32 || strlen($nonce) !== 32) {
-            throw new InvalidArgumentException('The key ID and the nonce must be 32 bytes.');
-        }
-
+        // TestDevice passes SHA-256 values only: the key ID and the nonce are 32 bytes.
         $extension = "\x30\x24\xA1\x22\x04\x20".$nonce;
         $lines = "basicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature\n"
             .'1.2.840.113635.100.8.2 = DER:'.implode(':', str_split(bin2hex($extension), 2));
