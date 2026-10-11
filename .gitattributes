@@ -2,6 +2,8 @@
 /.github export-ignore
 /spec export-ignore
 /tests export-ignore
+# CRLF line endings are part of this fixture.
+/tests/Fixtures/p256-explicit-one-char-lines.pem -text
 /.gitattributes export-ignore
 /.gitignore export-ignore
 /AGENTS.md export-ignore

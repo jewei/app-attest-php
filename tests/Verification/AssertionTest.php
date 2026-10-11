@@ -265,5 +265,15 @@ it('refuses a stored key string that is not exactly one PUBLIC KEY block', funct
     'a key and then a certificate' => [fn (string $key): string => $key.TestAuthority::shared()->rootPem],
     'two keys' => [fn (string $key): string => $key.$key],
     'text after the key' => [fn (string $key): string => $key.'trailing'],
-    'over 1 KB' => [fn (string $key): string => str_replace("\n-----END", str_repeat("\nAAAA", 220)."\n-----END", $key)],
+    // A valid P-256 key that OpenSSL reads (explicit parameters, one Base64 character per line): only the size cap refuses it.
+    'over 1 KB' => [fn (string $key): string => (string) file_get_contents(__DIR__.'/../Fixtures/p256-explicit-one-char-lines.pem')],
 ]);
+
+it('uses an over-1 KB fixture that OpenSSL reads as P-256', function (): void {
+    $pem = (string) file_get_contents(__DIR__.'/../Fixtures/p256-explicit-one-char-lines.pem');
+    $key = openssl_pkey_get_public($pem);
+    $details = $key === false ? false : openssl_pkey_get_details($key);
+
+    expect(strlen($pem))->toBeGreaterThan(1024)
+        ->and(is_array($details) && is_array($details['ec'] ?? null) ? $details['ec']['curve_name'] ?? null : null)->toBe('prime256v1');
+});
