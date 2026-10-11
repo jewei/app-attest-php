@@ -6,7 +6,7 @@ namespace AppAttest\Tests\Support;
 
 use InvalidArgumentException;
 
-/** Encodes test data as CBOR with shortest-form lengths. Lists become arrays; other arrays become maps. */
+/** Encodes test data as CBOR with shortest-form lengths. Lists become arrays; other arrays and Map become maps. */
 final class CborEncoder
 {
     public static function encode(mixed $value): string
@@ -17,11 +17,8 @@ final class CborEncoder
             $value instanceof Bytes => self::head(2, strlen($value->value)).$value->value,
             is_string($value) => self::head(3, strlen($value)).$value,
             is_array($value) && array_is_list($value) => self::head(4, count($value)).implode('', array_map(self::encode(...), $value)),
-            is_array($value) => self::head(5, count($value)).implode('', array_map(
-                static fn (int|string $key, mixed $item): string => self::encode($key).self::encode($item),
-                array_keys($value),
-                $value,
-            )),
+            is_array($value) => self::map($value),
+            $value instanceof Map => self::map($value->entries),
             default => throw new InvalidArgumentException('CborEncoder cannot encode this value.'),
         };
     }
@@ -37,5 +34,15 @@ final class CborEncoder
             $argument <= 0xFFFFFFFF => chr($type | 26).pack('N', $argument),
             default => chr($type | 27).pack('J', $argument),
         };
+    }
+
+    /** @param array<int|string, mixed> $entries */
+    private static function map(array $entries): string
+    {
+        return self::head(5, count($entries)).implode('', array_map(
+            static fn (int|string $key, mixed $item): string => self::encode($key).self::encode($item),
+            array_keys($entries),
+            $entries,
+        ));
     }
 }

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use AppAttest\Environment;
 use AppAttest\Tests\Support\TestAuthority;
 
 /**
@@ -48,30 +49,26 @@ it('refuses every truncation of and every change to a valid assertion', function
     $key = attestedKey();
     $assertion = TestAuthority::assertion($key['key'], testAppId(), 'client data', 9);
     $verifier = testVerifier();
-    expect(failureOf(fn () => $verifier->verifyAssertion($assertion, 'client data', $key['publicKey'], 8)))->toBeNull();
+    expect(failureOf(fn () => $verifier->verifyAssertion($assertion, 'client data', $key['publicKey'], 8, Environment::Production)))->toBeNull();
 
     for ($index = 0; $index < strlen($assertion); $index++) {
         $changed = $assertion;
         $changed[$index] = chr(ord($changed[$index]) ^ 0x01);
 
-        expect(failureOf(fn () => $verifier->verifyAssertion(substr($assertion, 0, $index), 'client data', $key['publicKey'], 8)))->not->toBeNull()
-            ->and(failureOf(fn () => $verifier->verifyAssertion($changed, 'client data', $key['publicKey'], 8)))->not->toBeNull("Byte {$index}");
+        expect(failureOf(fn () => $verifier->verifyAssertion(substr($assertion, 0, $index), 'client data', $key['publicKey'], 8, Environment::Production)))->not->toBeNull()
+            ->and(failureOf(fn () => $verifier->verifyAssertion($changed, 'client data', $key['publicKey'], 8, Environment::Production)))->not->toBeNull("Byte {$index}");
     }
 });
 
 it('refuses random bytes', function (): void {
     $verifier = testVerifier();
     $publicKey = attestedKey()['publicKey'];
-    mt_srand(20261011);
+    $random = new \Random\Randomizer(new \Random\Engine\Mt19937(20261011));
 
     for ($run = 0; $run < 500; $run++) {
-        $bytes = '';
-
-        for ($length = mt_rand(1, 300); $length > 0; $length--) {
-            $bytes .= chr(mt_rand(0, 255));
-        }
+        $bytes = $random->getBytes($random->getInt(1, 300));
 
         expect(failureOf(fn () => $verifier->verifyAttestation($bytes, str_repeat("\0", 32), testClientDataHash())))->not->toBeNull()
-            ->and(failureOf(fn () => $verifier->verifyAssertion($bytes, 'x', $publicKey, 0)))->not->toBeNull();
+            ->and(failureOf(fn () => $verifier->verifyAssertion($bytes, 'x', $publicKey, 0, Environment::Production)))->not->toBeNull();
     }
 });

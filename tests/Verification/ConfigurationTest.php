@@ -45,7 +45,9 @@ it('uses the pinned Apple root by default', function (): void {
 });
 
 it('refuses an empty or mixed category list', function (array $categories): void {
-    expect(fn () => new Verifier(testAppId(), Environment::Production, $categories))->toThrow(\InvalidArgumentException::class);
+    // Reflection passes the wrong types that a caller without static analysis could pass.
+    expect(fn () => (new \ReflectionClass(Verifier::class))->newInstance(testAppId(), Environment::Production, $categories))
+        ->toThrow(\InvalidArgumentException::class);
 })->with([
     'empty' => [[]],
     'not a list' => [['a' => ValidationCategory::AppStore]],

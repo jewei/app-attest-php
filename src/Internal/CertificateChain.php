@@ -13,86 +13,131 @@ use OpenSSLCertificate;
 /**
  * @internal Verifies credential certificate → intermediate → trust anchor.
  *
- * Checks: each signature with the issuer's key; each issuer name equals the
- * issuer's subject name; all three certificates are valid at the check time;
- * the intermediate is a CA that may sign certificates; the credential
- * certificate is not a CA; neither certificate has a critical extension that
- * this class does not check.
+ * All flags, names, and times come from the certificate DER (Der), not from
+ * openssl_x509_parse(), whose text output falls back to raw bytes for values
+ * that OpenSSL cannot decode. The checks:
+ *
+ * - The intermediate is not the trust anchor itself.
+ * - Neither certificate has a critical extension other than basicConstraints and keyUsage.
+ * - The intermediate is a CA (basicConstraints cA) with keyCertSign; the credential certificate is not a CA.
+ * - Each issuer name equals the next certificate's subject name, byte for byte.
+ * - All three certificates are valid at the check time.
+ * - The anchor's key signed the intermediate, then the intermediate's key signed
+ *   the credential certificate. No untrusted key is used before it is authenticated.
+ *
+ * @phpstan-import-type Extension from Der
  */
 final class CertificateChain
 {
-    /** Critical extensions that this class checks: basicConstraints and keyUsage. */
-    private const array UNDERSTOOD_CRITICAL = ["\x55\x1D\x13", "\x55\x1D\x0F"];
+    /**
+     * @return array{certificate: OpenSSLCertificate, extensions: list<Extension>} The credential certificate.
+     */
+    public static function verify(string $credentialDer, string $intermediateDer, TrustAnchor $anchor, DateTimeInterface $at): array
+    {
+        $credential = Der::certificate($credentialDer);
+        $intermediate = Der::certificate($intermediateDer);
 
-    public static function verify(
-        string $credentialDer,
-        string $intermediateDer,
-        OpenSSLCertificate $anchor,
-        DateTimeInterface $at,
-    ): OpenSSLCertificate {
-        $credential = self::fromDer($credentialDer);
-        $intermediate = self::fromDer($intermediateDer);
-        self::checkCriticalExtensions($credentialDer);
-        self::checkCriticalExtensions($intermediateDer);
+        if ($intermediateDer === $anchor->der) {
+            throw self::invalid('The intermediate certificate is the trust anchor.');
+        }
 
-        $credentialFields = self::fields($credential);
-        $intermediateFields = self::fields($intermediate);
-        $anchorFields = self::fields($anchor);
+        foreach (['credential' => $credential, 'intermediate' => $intermediate] as $name => $fields) {
+            foreach ($fields['extensions'] as $extension) {
+                if ($extension['critical'] && $extension['oid'] !== Der::BASIC_CONSTRAINTS && $extension['oid'] !== Der::KEY_USAGE) {
+                    throw self::invalid("The {$name} certificate has a critical extension that the verifier does not check.");
+                }
+            }
+        }
 
-        self::checkIssuedBy($credential, $credentialFields, $intermediate, $intermediateFields, 'credential');
-        self::checkIssuedBy($intermediate, $intermediateFields, $anchor, $anchorFields, 'intermediate');
+        if (! self::isCa($intermediate['extensions']) || ! self::allowsCertificateSigning($intermediate['extensions'])) {
+            throw self::invalid('The intermediate certificate is not a CA that may sign certificates.');
+        }
 
-        foreach (['credential' => $credentialFields, 'intermediate' => $intermediateFields, 'trust anchor' => $anchorFields] as $name => $fields) {
-            if ($at->getTimestamp() < $fields['validFrom'] || $at->getTimestamp() > $fields['validTo']) {
+        if (self::isCa($credential['extensions'])) {
+            throw self::invalid('The credential certificate is a CA certificate.');
+        }
+
+        if ($intermediate['issuer'] !== $anchor->fields['subject'] || $credential['issuer'] !== $intermediate['subject']) {
+            throw self::invalid('An issuer name is not the next certificate\'s subject name.');
+        }
+
+        foreach (['credential' => $credential, 'intermediate' => $intermediate, 'trust anchor' => $anchor->fields] as $name => $fields) {
+            if ($at->getTimestamp() < $fields['notBefore'] || $at->getTimestamp() > $fields['notAfter']) {
                 throw self::invalid("The {$name} certificate is not valid at the check time.");
             }
         }
 
-        if (self::isCa($credentialFields)) {
-            throw self::invalid('The credential certificate is a CA certificate.');
-        }
+        $intermediateCertificate = self::read($intermediateDer);
+        self::checkSignature($intermediateCertificate, $anchor->certificate, 'intermediate');
+        $credentialCertificate = self::read($credentialDer);
+        self::checkSignature($credentialCertificate, $intermediateCertificate, 'credential');
 
-        if (! self::isCa($intermediateFields) || ! self::canSignCertificates($intermediateFields)) {
-            throw self::invalid('The intermediate certificate is not a CA that may sign certificates.');
-        }
-
-        return $credential;
+        return ['certificate' => $credentialCertificate, 'extensions' => $credential['extensions']];
     }
 
     /** Reads and checks a trust anchor PEM. Throws InvalidArgumentException: the anchor is server configuration. */
-    public static function anchor(string $pem): OpenSSLCertificate
+    public static function anchor(string $pem): TrustAnchor
     {
         if (! str_starts_with($pem, '-----BEGIN CERTIFICATE-----')) {
             throw new InvalidArgumentException('The trust anchor must be a PEM certificate.');
         }
 
         $certificate = OpenSsl::quietly(static fn (): OpenSSLCertificate|false => openssl_x509_read($pem));
+        $exported = $certificate === false ? false : OpenSsl::quietly(static fn (): string|false => openssl_x509_export($certificate, $out) && is_string($out) ? $out : false);
+        $der = $exported === false ? false : base64_decode((string) preg_replace('/-----[^-]+-----|\s/', '', $exported), true);
 
-        if ($certificate === false) {
+        if ($certificate === false || $der === false) {
             throw new InvalidArgumentException('The trust anchor cannot be read.');
         }
 
         try {
-            $fields = self::fields($certificate);
+            $fields = Der::certificate($der);
+            $constraints = self::constraints($fields['extensions']);
+            $signs = self::allowsCertificateSigning($fields['extensions']);
         } catch (VerificationException) {
-            throw new InvalidArgumentException('The trust anchor cannot be read.');
+            throw new InvalidArgumentException('The trust anchor is not a well-formed version 3 DER certificate.');
         }
 
-        if (! self::isCa($fields) || ! self::canSignCertificates($fields)) {
-            throw new InvalidArgumentException('The trust anchor is not a CA that may sign certificates.');
+        if (! $constraints['ca'] || ($constraints['pathLength'] ?? 1) < 1 || ! $signs) {
+            throw new InvalidArgumentException('The trust anchor is not a CA that may sign a CA certificate.');
         }
 
-        return $certificate;
+        return new TrustAnchor($certificate, $der, $fields);
     }
 
-    private static function fromDer(string $der): OpenSSLCertificate
+    /** @param list<Extension> $extensions */
+    private static function isCa(array $extensions): bool
     {
-        $outer = Der::element($der, 0, strlen($der));
+        return self::constraints($extensions)['ca'];
+    }
 
-        if ($outer['tag'] !== Der::SEQUENCE || $outer['end'] !== strlen($der)) {
-            throw self::invalid('A certificate is not one DER SEQUENCE.');
-        }
+    /**
+     * basicConstraints, or "not a CA" when the extension is absent (RFC 5280, section 4.2.1.9).
+     *
+     * @param  list<Extension>  $extensions
+     * @return array{ca: bool, pathLength: ?int}
+     */
+    private static function constraints(array $extensions): array
+    {
+        $value = Der::extensionValue($extensions, Der::BASIC_CONSTRAINTS);
 
+        return $value === null ? ['ca' => false, 'pathLength' => null] : Der::basicConstraints($value);
+    }
+
+    /**
+     * keyCertSign is required. Apple's CA certificates have keyUsage, so its absence is refused.
+     *
+     * @param  list<Extension>  $extensions
+     */
+    private static function allowsCertificateSigning(array $extensions): bool
+    {
+        $value = Der::extensionValue($extensions, Der::KEY_USAGE);
+
+        return $value !== null && Der::allowsCertificateSigning($value);
+    }
+
+    private static function read(string $der): OpenSSLCertificate
+    {
         $pem = "-----BEGIN CERTIFICATE-----\n".chunk_split(base64_encode($der), 64, "\n")."-----END CERTIFICATE-----\n";
         $certificate = OpenSsl::quietly(static fn (): OpenSSLCertificate|false => openssl_x509_read($pem));
 
@@ -103,69 +148,11 @@ final class CertificateChain
         return $certificate;
     }
 
-    private static function checkCriticalExtensions(string $der): void
+    private static function checkSignature(OpenSSLCertificate $certificate, OpenSSLCertificate $issuer, string $name): void
     {
-        foreach (Der::extensions($der) as $oid => $extension) {
-            if ($extension['critical'] && ! in_array($oid, self::UNDERSTOOD_CRITICAL, true)) {
-                throw self::invalid('A certificate has a critical extension that the verifier does not check.');
-            }
-        }
-    }
-
-    /**
-     * @param  array{subject: mixed, issuer: mixed, validFrom: int, validTo: int, basicConstraints: string, keyUsage: string}  $fields
-     * @param  array{subject: mixed, issuer: mixed, validFrom: int, validTo: int, basicConstraints: string, keyUsage: string}  $issuerFields
-     */
-    private static function checkIssuedBy(
-        OpenSSLCertificate $certificate,
-        array $fields,
-        OpenSSLCertificate $issuer,
-        array $issuerFields,
-        string $name,
-    ): void {
-        if ($fields['issuer'] !== $issuerFields['subject']) {
-            throw self::invalid("The {$name} certificate's issuer is not the next certificate's subject.");
-        }
-
-        $result = OpenSsl::quietly(static fn (): int => openssl_x509_verify($certificate, $issuer));
-
-        if ($result !== 1) {
+        if (OpenSsl::quietly(static fn (): int => openssl_x509_verify($certificate, $issuer)) !== 1) {
             throw self::invalid("The {$name} certificate's signature is not valid.");
         }
-    }
-
-    /** @return array{subject: mixed, issuer: mixed, validFrom: int, validTo: int, basicConstraints: string, keyUsage: string} */
-    private static function fields(OpenSSLCertificate $certificate): array
-    {
-        $parsed = OpenSsl::quietly(static fn (): array|false => openssl_x509_parse($certificate));
-
-        if (! is_array($parsed) || ! is_int($parsed['validFrom_time_t'] ?? null) || ! is_int($parsed['validTo_time_t'] ?? null)
-            || ! array_key_exists('subject', $parsed) || ! array_key_exists('issuer', $parsed)) {
-            throw self::invalid('A certificate cannot be parsed.');
-        }
-
-        $extensions = is_array($parsed['extensions'] ?? null) ? $parsed['extensions'] : [];
-
-        return [
-            'subject' => $parsed['subject'],
-            'issuer' => $parsed['issuer'],
-            'validFrom' => $parsed['validFrom_time_t'],
-            'validTo' => $parsed['validTo_time_t'],
-            'basicConstraints' => is_string($extensions['basicConstraints'] ?? null) ? $extensions['basicConstraints'] : '',
-            'keyUsage' => is_string($extensions['keyUsage'] ?? null) ? $extensions['keyUsage'] : '',
-        ];
-    }
-
-    /** @param array{basicConstraints: string} $fields */
-    private static function isCa(array $fields): bool
-    {
-        return preg_match('/(^|,\s*)CA:TRUE(,|$)/', $fields['basicConstraints']) === 1;
-    }
-
-    /** @param array{keyUsage: string} $fields */
-    private static function canSignCertificates(array $fields): bool
-    {
-        return in_array('Certificate Sign', array_map(trim(...), explode(',', $fields['keyUsage'])), true);
     }
 
     private static function invalid(string $message): VerificationException

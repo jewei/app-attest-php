@@ -13,8 +13,9 @@ use AppAttest\Exception\VerificationException;
  * Layout: RP ID hash (32 bytes), flags (1), counter (4, big-endian). An
  * attestation adds the AAGUID (16), the credential ID length (2), the
  * credential ID, and the COSE public key. Both may end with a CBOR map of
- * extensions. Apple writes the extensions without setting the ED flag, so the
- * parser reads them whenever bytes remain.
+ * extensions. Apple's sample attestation has extensions without the ED flag
+ * (flags 0x40), and real assertions set it (0xC0), so the parser ignores the
+ * flags and reads the extensions whenever bytes remain.
  */
 final readonly class AuthenticatorData
 {
@@ -44,7 +45,7 @@ final readonly class AuthenticatorData
         $offset += $length;
         [$key, $offset] = Cbor::decodePrefix($data, $offset);
 
-        if (! is_array($key) || array_is_list($key)) {
+        if (! $key instanceof CborMap) {
             throw self::malformed('The credential public key is not a CBOR map.');
         }
 
@@ -69,12 +70,12 @@ final readonly class AuthenticatorData
         if ($offset < strlen($data)) {
             $extensions = Cbor::decode(substr($data, $offset));
 
-            if (! is_array($extensions) || ($extensions !== [] && array_is_list($extensions))) {
+            if (! $extensions instanceof CborMap) {
                 throw self::malformed('The authenticator data extensions are not a CBOR map.');
             }
 
-            $category = self::category($extensions[self::CATEGORY] ?? null);
-            $version = $extensions[self::BUNDLE_VERSION] ?? null;
+            $category = self::category($extensions->get(self::CATEGORY));
+            $version = $extensions->get(self::BUNDLE_VERSION);
 
             if ($version !== null && ! is_string($version)) {
                 throw self::malformed('The bundle version extension is not a text string.');

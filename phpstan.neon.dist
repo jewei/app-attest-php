@@ -4,3 +4,4 @@ parameters:
     paths:
         - src
         - tests/Tooling/check-architecture.php
+        - tests/Support/ArchitectureChecker.php

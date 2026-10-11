@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use AppAttest\AppId;
+use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\Tests\Support\AssertionObject;
 use AppAttest\Tests\Support\Bytes;
@@ -13,7 +14,7 @@ use AppAttest\Verifier;
 it('accepts a valid assertion and returns the new counter', function (): void {
     $key = attestedKey();
     $assertion = TestAuthority::assertion($key['key'], testAppId(), 'POST /orders', 5);
-    $verified = testVerifier()->verifyAssertion($assertion, 'POST /orders', $key['publicKey'], 4);
+    $verified = testVerifier()->verifyAssertion($assertion, 'POST /orders', $key['publicKey'], 4, Environment::Production);
 
     expect($verified->counter)->toBe(5)
         ->and($verified->validationCategory)->toBe(ValidationCategory::TestFlight)
@@ -69,7 +70,7 @@ it('refuses a signature over authenticatorData || clientDataHash, one hash short
 
     $assertion = \AppAttest\Tests\Support\CborEncoder::encode(['signature' => new Bytes($signature), 'authenticatorData' => new Bytes($authenticatorData)]);
 
-    expect(failureOf(fn () => testVerifier()->verifyAssertion($assertion, 'POST /orders', $key['publicKey'], 0)))->toBe(Failure::InvalidSignature);
+    expect(failureOf(fn () => testVerifier()->verifyAssertion($assertion, 'POST /orders', $key['publicKey'], 0, Environment::Production)))->toBe(Failure::InvalidSignature);
 });
 
 it('refuses authenticator data that changed after signing', function (): void {
@@ -97,7 +98,7 @@ it('applies the validation category policy', function (): void {
 it('accepts an assertion without extensions', function (): void {
     $key = attestedKey();
     $assertion = TestAuthority::assertion($key['key'], testAppId(), 'GET /me', 1, ['extensions' => null]);
-    $verified = testVerifier()->verifyAssertion($assertion, 'GET /me', $key['publicKey'], 0);
+    $verified = testVerifier()->verifyAssertion($assertion, 'GET /me', $key['publicKey'], 0, Environment::Production);
 
     expect($verified->validationCategory)->toBeNull()
         ->and($verified->bundleVersion)->toBeNull();
@@ -128,18 +129,61 @@ it('refuses malformed extensions before the signature check', function (): void 
     expect(assertionFailure(options: ['extensions' => "\xFF"]))->toBe(Failure::MalformedInput);
 });
 
+it('refuses a key from another environment', function (): void {
+    $key = attestedKey();
+    $assertion = TestAuthority::assertion($key['key'], testAppId(), 'GET /me', 1);
+
+    expect(failureOf(fn () => testVerifier()->verifyAssertion($assertion, 'GET /me', $key['publicKey'], 0, Environment::Development)))
+        ->toBe(Failure::EnvironmentMismatch)
+        ->and(failureOf(fn () => testVerifier(Environment::Development)->verifyAssertion($assertion, 'GET /me', $key['publicKey'], 0, Environment::Development)))
+        ->toBeNull();
+});
+
+it('accepts a signed assertion at the size limit and refuses one byte more', function (): void {
+    $key = attestedKey();
+    $sized = static function (int $size) use ($key): string {
+        $padding = static fn (int $length): string => TestAuthority::assertion($key['key'], testAppId(), 'GET /me', 1, ['extensions' => ['apple_bundle_version_01' => str_repeat('1', $length)]]);
+        $base = strlen($padding(300));
+
+        // A signature is 70 to 72 bytes, so retry until the size is exact.
+        for ($attempt = 0; $attempt < 50; $attempt++) {
+            $assertion = $padding(300 + $size - $base);
+
+            if (strlen($assertion) === $size) {
+                return $assertion;
+            }
+        }
+
+        throw new \RuntimeException('No assertion of the exact size.');
+    };
+
+    expect(failureOf(fn () => testVerifier()->verifyAssertion($sized(Verifier::MAX_ASSERTION_BYTES), 'GET /me', $key['publicKey'], 0, Environment::Production)))->toBeNull()
+        ->and(failureOf(fn () => testVerifier()->verifyAssertion($sized(Verifier::MAX_ASSERTION_BYTES + 1), 'GET /me', $key['publicKey'], 0, Environment::Production)))->toBe(Failure::MalformedInput);
+});
+
 it('refuses an empty or oversized assertion', function (string $assertion): void {
-    expect(failureOf(fn () => testVerifier()->verifyAssertion($assertion, 'x', attestedKey()['publicKey'], 0)))->toBe(Failure::MalformedInput);
+    expect(failureOf(fn () => testVerifier()->verifyAssertion($assertion, 'x', attestedKey()['publicKey'], 0, Environment::Production)))->toBe(Failure::MalformedInput);
 })->with([
     'empty' => [''],
     'one byte over the limit' => [str_repeat("\xA0", Verifier::MAX_ASSERTION_BYTES + 1)],
 ]);
 
 it('refuses a stored public key that is not an EC P-256 PEM', function (string $publicKey): void {
-    expect(fn () => testVerifier()->verifyAssertion("\xA0", 'x', $publicKey, 0))->toThrow(\InvalidArgumentException::class);
+    expect(fn () => testVerifier()->verifyAssertion("\xA0", 'x', $publicKey, 0, Environment::Production))->toThrow(\InvalidArgumentException::class);
 })->with([
     'empty' => [''],
-    'file path' => ['file:///etc/hosts'],
+    'file path to a real P-256 key' => [(static function (): string {
+        $path = tempnam(sys_get_temp_dir(), 'app-attest-key-');
+
+        if ($path === false) {
+            throw new \RuntimeException('tempnam failed.');
+        }
+
+        file_put_contents($path, TestAuthority::publicPem(TestAuthority::key()));
+        register_shutdown_function(static fn (): bool => unlink($path));
+
+        return 'file://'.$path;
+    })()],
     'certificate' => [TestAuthority::shared()->rootPem],
     'bad PEM' => ["-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----\n"],
     'P-384' => [TestAuthority::publicPem(TestAuthority::key('secp384r1'))],
@@ -147,7 +191,7 @@ it('refuses a stored public key that is not an EC P-256 PEM', function (string $
 ]);
 
 it('refuses a previous counter outside the 32-bit range', function (int $previous): void {
-    expect(fn () => testVerifier()->verifyAssertion("\xA0", 'x', attestedKey()['publicKey'], $previous))->toThrow(\InvalidArgumentException::class);
+    expect(fn () => testVerifier()->verifyAssertion("\xA0", 'x', attestedKey()['publicKey'], $previous, Environment::Production))->toThrow(\InvalidArgumentException::class);
 })->with([-1, 0x100000000, PHP_INT_MIN]);
 
 it('leaves OpenSSL\'s error queue empty', function (array $options): void {

@@ -10,5 +10,13 @@
     "source": "https://developer.apple.com/documentation/devicecheck/attestation-object-validation-guide",
     "retrieved": "2026-10-11",
     "attestationSha256": "e4ca508153f6619a29d0887eb0ffe19540b9f15c5a6aeccdac26c49affd5f61a"
+  },
+  "third-party/block-buzz-ios27-assertion.json": {
+    "source": "https://github.com/block/buzz/blob/632895e84c7e97970cd1426b536b69878a803737/crates/buzz-push-gateway/tests/fixtures/app-attest-assertion-extensions.json",
+    "pullRequest": "https://github.com/block/buzz/pull/8020",
+    "license": "Apache-2.0 (third-party/LICENSE-block-buzz)",
+    "retrieved": "2026-10-12",
+    "sha256": "b012352f5e42904120a7950c441ff401a566f0f963143dd7d8ad7d161bcbef96",
+    "evidence": "A real iOS 27 assertion with Apple's extensions in authenticatorData (flags 0xC0). The file is unchanged from the pull request's head commit. The pull request was open, not merged, on 2026-10-12."
   }
 }

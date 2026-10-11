@@ -7,6 +7,7 @@ use AppAttest\Environment;
 use AppAttest\Exception\Failure;
 use AppAttest\Exception\VerificationException;
 use AppAttest\Tests\Support\TestAuthority;
+use AppAttest\ValidationCategory;
 use AppAttest\Verifier;
 
 function testAppId(): AppId
@@ -26,7 +27,19 @@ function testVerifier(
     ?AppId $appId = null,
     ?TestAuthority $authority = null,
 ): Verifier {
-    return new Verifier($appId ?? testAppId(), $environment, $categories, ($authority ?? TestAuthority::shared())->rootPem);
+    return new Verifier($appId ?? testAppId(), $environment, $categories === null ? null : categoryList($categories), ($authority ?? TestAuthority::shared())->rootPem);
+}
+
+/**
+ * @param  array<mixed>  $categories
+ * @return list<ValidationCategory>
+ */
+function categoryList(array $categories): array
+{
+    return array_map(
+        static fn (mixed $category): ValidationCategory => $category instanceof ValidationCategory ? $category : throw new \RuntimeException('Not a ValidationCategory.'),
+        array_values($categories),
+    );
 }
 
 /**
@@ -157,5 +170,5 @@ function assertionFailure(int $counter = 1, int $previous = 0, array $options = 
     $key = attestedKey();
     $assertion = TestAuthority::assertion($key['key'], testAppId(), $clientData, $counter, $options);
 
-    return failureOf(fn () => ($verifier ?? testVerifier())->verifyAssertion($assertion, $verifyClientData ?? $clientData, $key['publicKey'], $previous));
+    return failureOf(fn () => ($verifier ?? testVerifier())->verifyAssertion($assertion, $verifyClientData ?? $clientData, $key['publicKey'], $previous, Environment::Production));
 }

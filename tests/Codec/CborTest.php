@@ -5,6 +5,7 @@ declare(strict_types=1);
 use AppAttest\Exception\Failure;
 use AppAttest\Internal\ByteString;
 use AppAttest\Internal\Cbor;
+use AppAttest\Internal\CborMap;
 use AppAttest\Tests\Support\Bytes;
 use AppAttest\Tests\Support\CborEncoder;
 
@@ -12,10 +13,19 @@ it('decodes integers at each length boundary', function (int $value): void {
     expect(Cbor::decode(CborEncoder::encode($value)))->toBe($value);
 })->with([0, 1, 23, 24, 255, 256, 65535, 65536, 0xFFFFFFFF, 0x100000000, PHP_INT_MAX, -1, -24, -25, -256, -257, -65537, PHP_INT_MIN]);
 
-it('decodes RFC 8949 appendix A examples', function (string $hex, mixed $expected): void {
-    $value = Cbor::decode((string) hex2bin($hex));
+/** Turns decoded CBOR into plain arrays: ['bytes' => ...] for a byte string and ['map' => ...] for a map. */
+function plainCbor(mixed $value): mixed
+{
+    return match (true) {
+        $value instanceof ByteString => ['bytes' => $value->value],
+        $value instanceof CborMap => ['map' => array_map(plainCbor(...), $value->entries)],
+        is_array($value) => array_map(plainCbor(...), $value),
+        default => $value,
+    };
+}
 
-    expect($value instanceof ByteString ? ['bytes' => $value->value] : $value)->toBe($expected);
+it('decodes RFC 8949 appendix A examples', function (string $hex, mixed $expected): void {
+    expect(plainCbor(Cbor::decode((string) hex2bin($hex))))->toBe($expected);
 })->with([
     ['00', 0],
     ['17', 23],
@@ -38,9 +48,11 @@ it('decodes RFC 8949 appendix A examples', function (string $hex, mixed $expecte
     ['80', []],
     ['83010203', [1, 2, 3]],
     ['8301820203820405', [1, [2, 3], [4, 5]]],
-    ['a201020304', [1 => 2, 3 => 4]],
-    ['a26161016162820203', ['a' => 1, 'b' => [2, 3]]],
-    ['826161a161626163', ['a', ['b' => 'c']]],
+    ['a0', ['map' => []]],
+    ['a201020304', ['map' => [1 => 2, 3 => 4]]],
+    ['a26161016162820203', ['map' => ['a' => 1, 'b' => [2, 3]]]],
+    ['826161a161626163', ['a', ['map' => ['b' => 'c']]]],
+    ['a200010102', ['map' => [0 => 1, 1 => 2]]],
 ]);
 
 it('refuses CBOR outside the subset', function (string $hex): void {
@@ -89,27 +101,30 @@ it('limits container sizes', function (): void {
     $map = array_fill_keys(range(1, Cbor::MAX_ITEMS), 0);
 
     expect(Cbor::decode(CborEncoder::encode($array)))->toBe($array)
-        ->and(Cbor::decode(CborEncoder::encode($map)))->toBe($map)
+        ->and(plainCbor(Cbor::decode(CborEncoder::encode($map))))->toBe(['map' => $map])
         ->and(failureOf(fn () => Cbor::decode(CborEncoder::encode([...$array, 0]))))->toBe(Failure::MalformedInput)
         ->and(failureOf(fn () => Cbor::decode(CborEncoder::encode($map + [0 => 0]))))->toBe(Failure::MalformedInput);
 });
 
 it('decodes byte strings as ByteString and text as strings', function (): void {
     $value = Cbor::decode(CborEncoder::encode(['b' => new Bytes("\xFF\x00"), 't' => 'text']));
-    $bytes = is_array($value) ? ($value['b'] ?? null) : null;
+    $bytes = $value instanceof CborMap ? $value->get('b') : null;
 
     expect($bytes)->toBeInstanceOf(ByteString::class)
         ->and($bytes instanceof ByteString ? $bytes->value : null)->toBe("\xFF\x00")
-        ->and(is_array($value) ? ($value['t'] ?? null) : null)->toBe('text');
+        ->and($value instanceof CborMap ? $value->get('t') : null)->toBe('text');
 });
 
 it('decodes a prefix and returns the next offset', function (): void {
     $data = "\x05".CborEncoder::encode([1 => 2]).'rest';
 
-    expect(Cbor::decodePrefix($data, 1))->toBe([[1 => 2], 4])
+    [$value, $next] = Cbor::decodePrefix($data, 1);
+
+    expect(plainCbor($value))->toBe(['map' => [1 => 2]])
+        ->and($next)->toBe(4)
         ->and(failureOf(fn () => Cbor::decodePrefix($data, strlen($data))))->toBe(Failure::MalformedInput)
         ->and(failureOf(fn () => Cbor::decodePrefix($data, strlen($data) + 1)))->toBe(Failure::MalformedInput)
-        ->and(failureOf(fn () => Cbor::decodePrefix($data, -1)))->toBe(Failure::MalformedInput);
+        ->and(failureOf(fn () => Cbor::decodePrefix("\x00", -1)))->toBe(Failure::MalformedInput);
 });
 
 it('refuses every truncation of a nested value', function (): void {
@@ -118,4 +133,24 @@ it('refuses every truncation of a nested value', function (): void {
     for ($length = 0; $length < strlen($data); $length++) {
         expect(failureOf(fn () => Cbor::decode(substr($data, 0, $length))))->toBe(Failure::MalformedInput);
     }
+});
+
+it('accepts lengths and integers in a longer form than needed', function (string $hex, mixed $expected): void {
+    expect(plainCbor(Cbor::decode((string) hex2bin($hex))))->toBe($expected);
+})->with([
+    'integer 5 in one extra byte' => ['1805', 5],
+    'integer 5 in eight bytes' => ['1b0000000000000005', 5],
+    'text length in two bytes' => ['79000161', 'a'],
+]);
+
+it('checks a map with exactly the given keys', function (): void {
+    $map = new CborMap(['a' => 1, 2 => 'b']);
+
+    expect($map->hasExactly(['a', 2]))->toBeTrue()
+        ->and($map->hasExactly([2, 'a']))->toBeTrue()
+        ->and($map->hasExactly(['a']))->toBeFalse()
+        ->and($map->hasExactly(['a', 2, 'c']))->toBeFalse()
+        ->and($map->hasExactly(['a', 3]))->toBeFalse()
+        ->and($map->get('a'))->toBe(1)
+        ->and($map->get('missing'))->toBeNull();
 });

@@ -13,7 +13,9 @@ use Closure;
  * The verifier reports bad input with VerificationException instead, so this
  * class mutes those warnings during the call. It also empties OpenSSL's error
  * queue, so later openssl_error_string() calls in the application do not see
- * this package's errors.
+ * this package's errors. The queue is per process and OpenSSL cannot put
+ * entries back, so errors that the application left in the queue before the
+ * call are removed too.
  */
 final class OpenSsl
 {

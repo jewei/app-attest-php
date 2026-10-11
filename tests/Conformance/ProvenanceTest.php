@@ -22,3 +22,11 @@ it('records the hash of Apple\'s sample attestation', function (): void {
 
     expect(hash('sha256', $attestation))->toBe(specString($provenance, 'attestationSha256'));
 });
+
+it('records the hash of the third-party assertion fixture', function (): void {
+    $provenance = specObject(loadSpec('provenance.json'), 'third-party/block-buzz-ios27-assertion.json');
+    $file = (string) file_get_contents(__DIR__.'/../../spec/third-party/block-buzz-ios27-assertion.json');
+
+    expect(hash('sha256', $file))->toBe(specString($provenance, 'sha256'))
+        ->and(is_file(__DIR__.'/../../spec/third-party/LICENSE-block-buzz'))->toBeTrue();
+});

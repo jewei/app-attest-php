@@ -8,6 +8,7 @@ use AppAttest\Exception\Failure;
 use AppAttest\Tests\Support\AttestationObject;
 use AppAttest\Tests\Support\Bytes;
 use AppAttest\Tests\Support\CborEncoder;
+use AppAttest\Tests\Support\Map;
 use AppAttest\Tests\Support\TestAuthority;
 use AppAttest\ValidationCategory;
 use AppAttest\Verifier;
@@ -68,12 +69,18 @@ it('refuses a key ID that is not the credential key\'s hash', function (): void 
         ->toBe(Failure::KeyIdMismatch);
 });
 
-it('refuses a key ID that is not 32 bytes', function (int $length): void {
+it('refuses a key ID that is not 32 bytes', function (\Closure $change): void {
     $attestation = testAttestation();
+    $keyId = $change($attestation['keyId']);
 
-    expect(failureOf(fn () => testVerifier()->verifyAttestation($attestation['attestation'], substr($attestation['keyId'].'xx', 0, $length), testClientDataHash())))
+    expect(failureOf(fn () => testVerifier()->verifyAttestation($attestation['attestation'], is_string($keyId) ? $keyId : '', testClientDataHash())))
         ->toBe(Failure::MalformedInput);
-})->with([0, 31, 33, 44]);
+})->with([
+    'empty' => [static fn (string $keyId): string => ''],
+    '31 bytes' => [static fn (string $keyId): string => substr($keyId, 0, 31)],
+    '33 bytes' => [static fn (string $keyId): string => $keyId."\0"],
+    'Base64' => [static fn (string $keyId): string => base64_encode($keyId)],
+]);
 
 it('refuses another App ID', function (): void {
     expect(attestationFailure([], testVerifier(appId: new AppId('ABCDE12345', 'com.example.other'))))->toBe(Failure::AppIdMismatch)
@@ -91,6 +98,7 @@ it('refuses a credential ID that is not the key ID', function (string $credentia
     'other 32 bytes' => [str_repeat("\x07", 32)],
     'empty' => [''],
     'prefix' => [str_repeat("\x07", 16)],
+    '300 bytes, so the length has a high byte' => [str_repeat("\x07", 300)],
 ]);
 
 it('refuses a certificate chain that does not lead to the trust anchor', function (): void {
@@ -152,9 +160,65 @@ it('accepts a non-critical extension that the verifier does not check', function
 it('checks certificate validity at the given time', function (): void {
     expect(attestationFailure(at: new \DateTimeImmutable('+1 day')))->toBeNull()
         ->and(attestationFailure(at: new \DateTimeImmutable('+4 days')))->toBe(Failure::InvalidCertificate)
-        ->and(attestationFailure(at: new \DateTimeImmutable('-1 day')))->toBe(Failure::InvalidCertificate)
-        ->and(attestationFailure(at: new \DateTimeImmutable('+11 years')))->toBe(Failure::InvalidCertificate);
+        ->and(attestationFailure(at: new \DateTimeImmutable('-1 day')))->toBe(Failure::InvalidCertificate);
 });
+
+it('refuses an expired intermediate or trust anchor while the credential certificate is valid', function (int $rootDays, int $intermediateDays): void {
+    $authority = TestAuthority::create(rootDays: $rootDays, intermediateDays: $intermediateDays);
+    $attestation = $authority->attest(testAppId(), testClientDataHash());
+    $verify = fn (string $at) => failureOf(fn () => testVerifier(authority: $authority)->verifyAttestation(
+        $attestation['attestation'], $attestation['keyId'], testClientDataHash(), new \DateTimeImmutable($at),
+    ));
+
+    expect($verify('+12 hours'))->toBeNull()
+        ->and($verify('+2 days'))->toBe(Failure::InvalidCertificate);
+})->with([
+    'trust anchor' => [1, 3650],
+    'intermediate' => [3650, 1],
+]);
+
+it('refuses a critical extension in the intermediate that the verifier does not check', function (): void {
+    $authority = TestAuthority::create("basicConstraints = critical,CA:TRUE,pathlen:0\nkeyUsage = critical,keyCertSign\n1.2.3.4 = critical,DER:05:00");
+    $attestation = $authority->attest(testAppId(), testClientDataHash());
+
+    expect(failureOf(fn () => testVerifier(authority: $authority)->verifyAttestation($attestation['attestation'], $attestation['keyId'], testClientDataHash())))
+        ->toBe(Failure::InvalidCertificate);
+});
+
+it('refuses an intermediate with the right key but another subject name', function (): void {
+    $other = TestAuthority::shared()->intermediateWithSubject('Another App Attestation CA');
+    $mutate = static function (AttestationObject $object) use ($other): void {
+        $object->x5c = [$object->x5c[0], new Bytes($other)];
+    };
+
+    expect(attestationFailure(['mutate' => $mutate]))->toBe(Failure::InvalidCertificate)
+        ->and(attestationFailure(['mutate' => static function (AttestationObject $object): void {
+            $object->x5c = [$object->x5c[0], new Bytes(TestAuthority::shared()->intermediateWithSubject('Test App Attestation CA 1'))];
+        }]))->toBeNull();
+});
+
+it('refuses the trust anchor as the intermediate', function (): void {
+    $mutate = static function (AttestationObject $object): void {
+        $object->x5c = [$object->x5c[0], new Bytes(TestAuthority::shared()->rootDer)];
+    };
+
+    expect(attestationFailure(['issuer' => 'root', 'mutate' => $mutate]))->toBe(Failure::InvalidCertificate);
+});
+
+it('refuses a trust anchor path length that leaves no room for the intermediate', function (): void {
+    $authority = TestAuthority::create(rootExtensions: "basicConstraints = critical,CA:TRUE,pathlen:0\nkeyUsage = critical,keyCertSign");
+
+    expect(fn () => testVerifier(authority: $authority))->toThrow(\InvalidArgumentException::class)
+        ->and(fn () => testVerifier(authority: TestAuthority::create(rootExtensions: "basicConstraints = critical,CA:TRUE,pathlen:1\nkeyUsage = critical,keyCertSign")))
+        ->not->toThrow(\InvalidArgumentException::class);
+});
+
+it('pads key coordinates with leading zero bytes', function (string $fixture): void {
+    $key = TestAuthority::fixtureKey($fixture);
+    $attestation = testAttestation(['key' => $key]);
+
+    expect(failureOf(fn () => testVerifier()->verifyAttestation($attestation['attestation'], $attestation['keyId'], testClientDataHash())))->toBeNull();
+})->with(['p256-leading-zero-x', 'p256-leading-zero-y']);
 
 it('refuses a credential key that is not P-256', function (): void {
     expect(attestationFailure(['curve' => 'secp384r1']))->toBe(Failure::InvalidCertificate);
@@ -207,8 +271,20 @@ it('refuses an object that is not Apple\'s structure', function (\Closure $mutat
     'three certificates' => [static function (AttestationObject $object): void {
         $object->x5c[] = $object->x5c[1];
     }],
-    'x5c as a map' => [static function (AttestationObject $object): void {
+    'x5c as a map with text keys' => [static function (AttestationObject $object): void {
         $object->statement = ['x5c' => ['a' => $object->x5c[0], 'b' => $object->x5c[1]], 'receipt' => $object->receipt];
+    }],
+    'x5c as a map with the keys 0 and 1' => [static function (AttestationObject $object): void {
+        $object->statement = ['x5c' => new Map([0 => $object->x5c[0], 1 => $object->x5c[1]]), 'receipt' => $object->receipt];
+    }],
+    'object as a list' => [static fn (AttestationObject $object) => $object->replaceWith(['apple-appattest', ['x5c' => $object->x5c, 'receipt' => $object->receipt], $object->authData])],
+    'intermediate as text' => [static function (AttestationObject $object): void {
+        $object->x5c = [$object->x5c[0], 'intermediate'];
+    }],
+    'credential public key not a map' => [static function (AttestationObject $object): void {
+        $data = $object->authDataBytes();
+        $keyStart = 37 + 18 + 32;
+        $object->authData = new Bytes(substr($data, 0, $keyStart).CborEncoder::encode([1, 2]));
     }],
     'certificate as text' => [static function (AttestationObject $object): void {
         $object->x5c[0] = 'certificate';
@@ -297,9 +373,26 @@ it('refuses malformed extensions', function (array|string $extensions): void {
     'truncated' => [substr(CborEncoder::encode(['apple_bundle_version_01' => '1.0']), 0, -1)],
 ]);
 
-it('accepts an empty extensions map', function (): void {
-    expect(attestationFailure(['extensions' => []]))->toBeNull();
+it('accepts an empty extensions map and refuses an empty array', function (): void {
+    expect(attestationFailure(['extensions' => new Map([])]))->toBeNull()
+        ->and(attestationFailure(['extensions' => []]))->toBe(Failure::MalformedInput);
 });
+
+it('accepts a valid attestation at the size limit and refuses one byte more', function (int $extra, ?Failure $failure): void {
+    $mutate = static function (AttestationObject $object) use ($extra): void {
+        $object->receipt = new Bytes('');
+        $base = strlen($object->encode());
+        // An empty byte string has a 1-byte head; one of 256 to 65535 bytes has a 3-byte head.
+        $object->receipt = new Bytes(str_repeat('r', Verifier::MAX_ATTESTATION_BYTES - $base - 2 + $extra));
+    };
+    $attestation = testAttestation(['mutate' => $mutate]);
+
+    expect(strlen($attestation['attestation']))->toBe(Verifier::MAX_ATTESTATION_BYTES + $extra)
+        ->and(failureOf(fn () => testVerifier()->verifyAttestation($attestation['attestation'], $attestation['keyId'], testClientDataHash())))->toBe($failure);
+})->with([
+    'at the limit' => [0, null],
+    'one byte over' => [1, Failure::MalformedInput],
+]);
 
 it('refuses an empty or oversized attestation', function (string $attestation): void {
     expect(failureOf(fn () => testVerifier()->verifyAttestation($attestation, str_repeat("\0", 32), testClientDataHash())))

@@ -4,6 +4,7 @@
          bootstrap="vendor/autoload.php"
          colors="true"
          failOnWarning="true"
+         failOnNotice="true"
          failOnRisky="true"
          failOnDeprecation="true"
          failOnPhpunitDeprecation="true"

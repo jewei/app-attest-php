@@ -17,10 +17,12 @@ use RuntimeException;
  */
 final class TestAuthority
 {
+    public const string CA_EXTENSIONS = "basicConstraints = critical,CA:TRUE\nkeyUsage = critical,keyCertSign,cRLSign";
     private static ?self $shared = null;
 
     private function __construct(
         public readonly string $rootPem,
+        public readonly string $rootDer,
         private readonly OpenSSLAsymmetricKey $rootKey,
         private readonly OpenSSLCertificate $root,
         public readonly string $intermediateDer,
@@ -33,20 +35,37 @@ final class TestAuthority
         return self::$shared ??= self::create();
     }
 
-    /** @param string $intermediateExtensions OpenSSL extension lines for the intermediate. */
+    /**
+     * @param  string  $intermediateExtensions  OpenSSL extension lines for the intermediate.
+     * @param  string  $rootExtensions  OpenSSL extension lines for the root.
+     */
     public static function create(
         string $intermediateExtensions = "basicConstraints = critical,CA:TRUE,pathlen:0\nkeyUsage = critical,keyCertSign,cRLSign",
         int $rootDays = 3650,
+        int $intermediateDays = 3650,
+        string $rootExtensions = self::CA_EXTENSIONS,
     ): self {
         $rootKey = self::key('secp384r1');
         $root = self::sign(['commonName' => 'Test App Attestation Root CA', 'organizationName' => 'Test'], $rootKey, null, $rootKey,
-            "basicConstraints = critical,CA:TRUE\nkeyUsage = critical,keyCertSign,cRLSign", $rootDays, 'sha384');
+            $rootExtensions, $rootDays, 'sha384');
 
         $intermediateKey = self::key('secp384r1');
         $intermediate = self::sign(['commonName' => 'Test App Attestation CA 1', 'organizationName' => 'Test'], $intermediateKey, $root, $rootKey,
-            $intermediateExtensions, 3650, 'sha384');
+            $intermediateExtensions, $intermediateDays, 'sha384');
 
-        return new self(self::pem($root), $rootKey, $root, self::der($intermediate), $intermediate, $intermediateKey);
+        return new self(self::pem($root), self::der($root), $rootKey, $root, self::der($intermediate), $intermediate, $intermediateKey);
+    }
+
+    /** A P-256 key from tests/Fixtures. */
+    public static function fixtureKey(string $name): OpenSSLAsymmetricKey
+    {
+        $key = openssl_pkey_get_private((string) file_get_contents(__DIR__.'/../Fixtures/'.$name.'.pem'));
+
+        if ($key === false) {
+            throw new RuntimeException("The fixture key {$name} cannot be read.");
+        }
+
+        return $key;
     }
 
     /**
@@ -92,18 +111,25 @@ final class TestAuthority
         return $details['key'];
     }
 
+    /** Another intermediate certificate for the same key, with another subject name (DER). */
+    public function intermediateWithSubject(string $commonName): string
+    {
+        return self::der(self::sign(['commonName' => $commonName, 'organizationName' => 'Test'], $this->intermediateKey, $this->root, $this->rootKey,
+            "basicConstraints = critical,CA:TRUE,pathlen:0\nkeyUsage = critical,keyCertSign,cRLSign", 3650, 'sha384'));
+    }
+
     /**
-     * Builds an attestation object. Options: counter (int), aaguid, credentialId, rpIdHash (strings), extensions
-     * (map, raw string, or null for none), nonce (string, or null for no extension), nonceExtension (raw DER),
-     * credentialExtensions (OpenSSL lines), credentialDays (int), curve (string), issuer ('intermediate' or
-     * 'root'), mutate (Closure(AttestationObject): void).
+     * Builds an attestation object. Options: key (OpenSSLAsymmetricKey), counter (int), aaguid, credentialId,
+     * rpIdHash, coseKey (raw CBOR), receipt (strings), extensions (map, raw string, or null for none), nonce
+     * (string, or null for no extension), nonceExtension (raw DER), credentialExtensions (OpenSSL lines),
+     * credentialDays (int), curve (string), issuer ('intermediate' or 'root'), mutate (Closure(AttestationObject): void).
      *
      * @param  array<mixed>  $options
      * @return array{attestation: string, keyId: string, key: OpenSSLAsymmetricKey, publicKey: string, credential: string}
      */
     public function attest(AppId $appId, string $clientDataHash, array $options = []): array
     {
-        $key = self::key(Options::string($options, 'curve', 'prime256v1'));
+        $key = Options::key($options, 'key') ?? self::key(Options::string($options, 'curve', 'prime256v1'));
         $point = self::point($key);
         $keyId = hash('sha256', $point, true);
         $credentialId = Options::string($options, 'credentialId', $keyId);
@@ -112,7 +138,7 @@ final class TestAuthority
             ."\x40".pack('N', Options::int($options, 'counter', 0))
             .Options::string($options, 'aaguid', "appattest\0\0\0\0\0\0\0")
             .pack('n', strlen($credentialId)).$credentialId
-            .CborEncoder::encode([1 => 2, 3 => -7, -1 => 1, -2 => new Bytes(substr($point, 1, 32)), -3 => new Bytes(substr($point, 33, 32))])
+            .Options::string($options, 'coseKey', CborEncoder::encode([1 => 2, 3 => -7, -1 => 1, -2 => new Bytes(substr($point, 1, 32)), -3 => new Bytes(substr($point, 33, 32))]))
             .self::extensions($options);
 
         $nonce = Options::nullableString($options, 'nonce', hash('sha256', $authData.$clientDataHash, true));
@@ -132,7 +158,7 @@ final class TestAuthority
             : [$this->intermediate, $this->intermediateKey];
         $credential = self::der(self::sign(['commonName' => bin2hex($keyId)], $key, $issuer, $issuerKey, $lines, Options::int($options, 'credentialDays', 3), 'sha256'));
 
-        $object = new AttestationObject('apple-appattest', [new Bytes($credential), new Bytes($this->intermediateDer)], new Bytes('test receipt'), new Bytes($authData));
+        $object = new AttestationObject('apple-appattest', [new Bytes($credential), new Bytes($this->intermediateDer)], new Bytes(Options::string($options, 'receipt', 'test receipt')), new Bytes($authData));
         Options::closure($options, 'mutate')?->__invoke($object);
 
         return [

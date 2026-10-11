@@ -12,13 +12,18 @@ use AppAttest\Exception\VerificationException;
  *
  * It accepts unsigned and negative integers, byte strings, UTF-8 text strings,
  * arrays, and maps, all with definite lengths. It refuses tags, floats, simple
- * values, indefinite lengths, integers outside the PHP int range, duplicate or
- * non-scalar map keys, deep nesting, and large containers. Each length is
- * checked against the remaining input before any data is read.
+ * values, indefinite lengths, integers outside the 64-bit PHP int range,
+ * duplicate or non-scalar map keys, deep nesting, and large containers. Each
+ * length is checked against the remaining input before any data is read.
  *
- * Results: int, string (text), ByteString, list<mixed> (array), and
- * array<int|string, mixed> (map). PHP turns a text key such as "1" into the
- * int key 1; such a key and the integer 1 count as duplicates.
+ * It accepts a length or integer in a longer form than needed (RFC 8949,
+ * section 4.2.1, "preferred serialization" is not required): the value is the
+ * same, and App Attest signs authenticator data as raw bytes, not the CBOR
+ * around it.
+ *
+ * Results: int, string (text), ByteString, list<mixed> (array), and CborMap.
+ * PHP turns a text key such as "1" into the int key 1; such a key and the
+ * integer 1 count as duplicates.
  */
 final class Cbor
 {
@@ -129,7 +134,7 @@ final class Cbor
     /** @return list<mixed> */
     private static function sequence(string $data, int &$offset, int $count, int $depth): array
     {
-        self::checkCount($data, $offset, $count);
+        self::checkCount($count);
         $items = [];
 
         for ($index = 0; $index < $count; $index++) {
@@ -139,10 +144,9 @@ final class Cbor
         return $items;
     }
 
-    /** @return array<int|string, mixed> */
-    private static function map(string $data, int &$offset, int $count, int $depth): array
+    private static function map(string $data, int &$offset, int $count, int $depth): CborMap
     {
-        self::checkCount($data, $offset, $count);
+        self::checkCount($count);
         $map = [];
 
         for ($index = 0; $index < $count; $index++) {
@@ -159,13 +163,12 @@ final class Cbor
             $map[$key] = self::item($data, $offset, $depth + 1);
         }
 
-        return $map;
+        return new CborMap($map);
     }
 
-    /** Each entry needs at least one byte, so a count above the remaining bytes is truncated data. */
-    private static function checkCount(string $data, int $offset, int $count): void
+    private static function checkCount(int $count): void
     {
-        if ($count > self::MAX_ITEMS || $count > strlen($data) - $offset) {
+        if ($count > self::MAX_ITEMS) {
             throw self::malformed('A CBOR array or map has too many entries.');
         }
     }
