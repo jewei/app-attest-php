@@ -56,7 +56,7 @@ Bytes in the attestation statement that the server can send to Apple to get a fr
 
 ### ED flag
 
-Bit 7 of the authenticator data flags: extensions follow the counter. Assertions with extensions set it. Real iOS 27 and macOS 27 attestations set it too, but Apple's 2026 sample attestation does not, so attestations are read without it.
+Bit 7 of the authenticator data flags: extensions follow the counter. Assertions with extensions set it. A real macOS 27 attestation sets it too, but Apple's 2026 sample attestation does not, so attestations are read without it.
 
 ### Platform field
 

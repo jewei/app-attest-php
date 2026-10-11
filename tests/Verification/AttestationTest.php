@@ -512,7 +512,11 @@ it('reads the platform field among other fields', function (string $extraFields,
 it('refuses a key with Apple\'s macOS access-control blob, and an access-control blob without a platform field', function (?string $platform, string $acl, ?Failure $failure): void {
     $macAcl = (string) base64_decode('MEAMAjExMDowCQwCb2uhAwEB/zAJDAJvYaEDAQH/MAsMBG9kZWyhAwEB/zAVDARvc2duoAYMBHJzZWMwBaYDAgEB', true);
     $lines = "basicConstraints = critical,CA:FALSE\n".TestAuthority::aclExtension($acl === 'mac' ? $macAcl : $acl)
-        .($platform === null ? '' : "\n".TestAuthority::platformExtension($platform));
+        .match ($platform) {
+            null => '',
+            'no field' => "\n".TestAuthority::platformFields("\xBF\x8A\x78\x06\x04\x04\x32\x37\x2E\x30"),
+            default => "\n".TestAuthority::platformExtension($platform),
+        };
 
     expect(attestationFailure(['credentialExtensions' => $lines]))->toBe($failure);
 })->with([
@@ -520,7 +524,30 @@ it('refuses a key with Apple\'s macOS access-control blob, and an access-control
     'the macOS blob with iphoneos' => ['iphoneos', 'mac', Failure::UnsupportedPlatform],
     'another blob without a platform field (a Mac with SIP off)' => [null, 'another policy', Failure::UnsupportedPlatform],
     'an iOS blob with iphoneos (iOS 27)' => ['iphoneos', 'an iOS policy', null],
+    'a blob and a platform extension without the field (a changed layout)' => ['no field', 'an iOS policy', Failure::InvalidCertificate],
 ]);
+
+it('names the reason for each platform refusal', function (string $lines, string $message): void {
+    try {
+        testVerifier()->verifyAttestation(...array_values(array_intersect_key(testAttestation(['credentialExtensions' => "basicConstraints = critical,CA:FALSE\n".$lines]), ['attestation' => 0, 'keyId' => 0])), clientDataHash: testClientDataHash());
+        $caught = '';
+    } catch (VerificationException $exception) {
+        $caught = $exception->getMessage();
+    }
+
+    expect($caught)->toContain($message);
+})->with([
+    'another platform' => [TestAuthority::platformExtension('xros'), '"xros"'],
+    'the macOS blob' => [TestAuthority::aclExtension((string) base64_decode('MEAMAjExMDowCQwCb2uhAwEB/zAJDAJvYaEDAQH/MAsMBG9kZWyhAwEB/zAVDARvc2duoAYMBHJzZWMwBaYDAgEB', true)), 'macOS access-control blob'],
+    'a blob alone' => [TestAuthority::aclExtension('an iOS policy'), 'no platform extension'],
+]);
+
+it('verifies a real-device shaped attestation: ED set with extensions, and returns the category', function (): void {
+    $attestation = testAttestation(['flags' => "\xC0", 'extensions' => ['apple_validation_category_01' => new Bytes("\x03\0\0\0")]]);
+    $key = testVerifier()->verifyAttestation($attestation['attestation'], $attestation['keyId'], testClientDataHash());
+
+    expect($key->validationCategory)->toBe(ValidationCategory::Development);
+});
 
 it('refuses an intermediate with the anchor\'s key under another name', function (): void {
     $intermediate = TestAuthority::shared()->customIntermediate('Another App Attestation CA', anchorKey: true);

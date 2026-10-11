@@ -19,3 +19,14 @@ it('reads macosx and Apple\'s documented macOS access-control blob from the real
     expect($platform === null ? null : Der::platform($platform))->toBe('macosx')
         ->and($acl !== null && str_contains($acl, $macAcl))->toBeTrue();
 });
+
+it('reads iphoneos and no access-control blob from Apple\'s 2024 (iOS 18.0) sample', function (): void {
+    $object = Cbor::decode((string) base64_decode(specString(loadSpec('apple-sample-attestation-2024.json'), 'attestation'), true));
+    $statement = $object instanceof CborMap ? $object->get('attStmt') : null;
+    $x5c = $statement instanceof CborMap ? $statement->get('x5c') : null;
+    $certificate = is_array($x5c) && $x5c[0] instanceof ByteString ? Der::certificate($x5c[0]->value) : null;
+    $platform = $certificate === null ? null : Der::extensionValue($certificate['extensions'], "\x2A\x86\x48\x86\xF7\x63\x64\x08\x07");
+
+    expect($platform === null ? null : Der::platform($platform))->toBe('iphoneos')
+        ->and($certificate === null ? 'none' : Der::extensionValue($certificate['extensions'], "\x2A\x86\x48\x86\xF7\x63\x64\x08\x06"))->toBeNull();
+});

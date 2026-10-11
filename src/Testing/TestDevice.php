@@ -50,10 +50,12 @@ final class TestDevice
     /** The attestation object (raw CBOR) for $clientDataHash, as attestKey() returns it. */
     public function attest(string $clientDataHash): string
     {
-        $authData = $this->appId->hash()."\x40\x00\x00\x00\x00".$this->environment->aaguid()
+        $extensions = $this->extensions();
+        // Real attestations with extensions set AT and ED (0xC0), as assertions do (a macOS 27 fixture in spec/).
+        $authData = $this->appId->hash().($extensions === '' ? "\x40" : "\xC0")."\x00\x00\x00\x00".$this->environment->aaguid()
             .pack('n', 32).$this->keyId
             .CborEncoder::map([1 => 2, 3 => -7, -1 => 1, -2 => CborEncoder::bytes(substr($this->point, 1, 32)), -3 => CborEncoder::bytes(substr($this->point, 33, 32))])
-            .$this->extensions();
+            .$extensions;
         [$credential, $intermediate] = ($this->issue)($this->key, $this->keyId, hash('sha256', $authData.$clientDataHash, true));
 
         return CborEncoder::map([

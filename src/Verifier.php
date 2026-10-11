@@ -139,16 +139,27 @@ final readonly class Verifier
 
         // A key whose certificate names another platform, such as macOS, needs checks that this package does
         // not make, so it is refused. Apple's documented macOS aclBlob is refused too. A Mac with System Integrity
-        // Protection off writes another blob, so a certificate with an aclBlob must also name its platform; a
-        // certificate with neither (iOS 26 and earlier) is accepted.
+        // Protection off writes another blob, so a certificate with an aclBlob must also name its platform. iOS 27
+        // writes both, iOS 18 writes the platform field and no blob, and the 2021 layout has neither.
         $platformExtension = Der::extensionValue($credential['extensions'], self::PLATFORM_OID);
         $platform = $platformExtension === null ? null : Der::platform($platformExtension);
 
         $acl = Der::extensionValue($credential['extensions'], self::ACL_OID);
         $macAcl = (string) base64_decode(self::MACOS_ACL, true);
 
-        if (($platform !== null && $platform !== self::IOS_PLATFORM) || ($acl !== null && ($platform === null || str_contains($acl, $macAcl)))) {
-            throw self::fail(Failure::UnsupportedPlatform, 'The key is from a platform other than iPhone and iPad.');
+        if ($platform !== null && $platform !== self::IOS_PLATFORM) {
+            throw self::fail(Failure::UnsupportedPlatform, "The key is from the platform \"{$platform}\", not iPhone or iPad.");
+        }
+
+        if ($acl !== null && str_contains($acl, $macAcl)) {
+            throw self::fail(Failure::UnsupportedPlatform, 'The key has Apple\'s macOS access-control blob.');
+        }
+
+        if ($acl !== null && $platform === null) {
+            // A platform extension without the field, next to a blob, is more likely a changed layout than a Mac.
+            throw $platformExtension === null
+                ? self::fail(Failure::UnsupportedPlatform, 'The key has an access-control blob but no platform extension.')
+                : self::fail(Failure::InvalidCertificate, 'The platform extension has no platform field; its layout may have changed.');
         }
 
         // 4. The key ID is SHA-256 of the public key as an X9.62 uncompressed point.

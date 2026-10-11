@@ -66,6 +66,12 @@ final class TestAuthority
         return '1.2.840.113635.100.8.7 = DER:'.self::hexColons("\x30".self::length(strlen($fields)).$fields);
     }
 
+    /** OpenSSL extension lines for the platform extension 1.2.840.113635.100.8.7 with these raw fields only. */
+    public static function platformFields(string $fields): string
+    {
+        return '1.2.840.113635.100.8.7 = DER:'.self::hexColons("\x30".self::length(strlen($fields)).$fields);
+    }
+
     /** OpenSSL extension lines for the access-control (aclBlob) extension 1.2.840.113635.100.8.6 with $blob. */
     public static function aclExtension(string $blob): string
     {
@@ -192,7 +198,7 @@ final class TestAuthority
         $credentialId = Options::string($options, 'credentialId', $keyId);
 
         $authData = Options::string($options, 'rpIdHash', $appId->hash())
-            ."\x40".pack('N', Options::int($options, 'counter', 0))
+            .Options::string($options, 'flags', "\x40").pack('N', Options::int($options, 'counter', 0))
             .Options::string($options, 'aaguid', "appattest\0\0\0\0\0\0\0")
             .pack('n', strlen($credentialId)).$credentialId
             .Options::string($options, 'coseKey', CborEncoder::encode([1 => 2, 3 => -7, -1 => 1, -2 => new Bytes(substr($point, 1, 32)), -3 => new Bytes(substr($point, 33, 32))]))

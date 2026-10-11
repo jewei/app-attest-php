@@ -26,7 +26,7 @@ it('writes App Attest data as a device does', function (): void {
         ->and($coseKey instanceof CborMap && $coseKey->get(-2) instanceof ByteString && $coseKey->get(-3) instanceof ByteString
             ? hash('sha256', "\x04".$coseKey->get(-2)->value.$coseKey->get(-3)->value, true) : null)->toBe($device->keyId)
         ->and($receipt instanceof ByteString ? $receipt->value : null)->toBe('test receipt')
-        ->and(ord($authData[32]))->toBe(0x40)
+        ->and(ord($authData[32]))->toBe(0xC0)
         ->and(ord($authenticatorData[32]))->toBe(0xC0)
         ->and(substr($authenticatorData, 0, 32))->toBe($appId->hash())
         ->and(substr($authenticatorData, 33, 4))->toBe("\0\0\0\x01")
