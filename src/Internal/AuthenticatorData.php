@@ -48,6 +48,7 @@ final readonly class AuthenticatorData
         $aaguid = substr($data, $offset, 16);
         $length = self::uint16(substr($data, $offset + 16, 2));
         $offset += 18;
+        // Defensive: Cbor::decodePrefix() below also refuses an offset past the end.
         self::need($data, $offset, $length);
         $credentialId = substr($data, $offset, $length);
         $offset += $length;

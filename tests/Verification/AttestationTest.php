@@ -339,6 +339,7 @@ it('applies the validation category policy', function (mixed $category, \Closure
     'TestFlight, any' => [new Bytes("\x02\0\0\0"), fn () => CategoryPolicy::any(), null],
     'TestFlight, allowed' => [new Bytes("\x02\0\0\0"), fn () => CategoryPolicy::only(ValidationCategory::TestFlight), null],
     'TestFlight, App Store only' => [new Bytes("\x02\0\0\0"), fn () => CategoryPolicy::only(ValidationCategory::AppStore), Failure::CategoryNotAllowed],
+    'App Store, App Store or missing' => [new Bytes("\x04\0\0\0"), fn () => CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore), null],
     'TestFlight, App Store or missing' => [new Bytes("\x02\0\0\0"), fn () => CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore), Failure::CategoryNotAllowed],
     'second of two allowed or missing' => [new Bytes("\x02\0\0\0"), fn () => CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore, ValidationCategory::TestFlight), null],
     'second of two allowed' => [new Bytes("\x04\0\0\0"), fn () => CategoryPolicy::only(ValidationCategory::TestFlight, ValidationCategory::AppStore), null],

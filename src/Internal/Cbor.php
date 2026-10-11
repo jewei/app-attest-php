@@ -164,6 +164,7 @@ final class Cbor
         $map = [];
 
         for ($index = 0; $index < $count; $index++) {
+            // Defensive: a key that is a container is refused below anyway; the depth only bounds its decoding.
             $key = self::item($data, $offset, $depth + 1);
 
             if (! is_int($key) && ! is_string($key)) {

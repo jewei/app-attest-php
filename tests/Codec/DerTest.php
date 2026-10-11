@@ -353,6 +353,8 @@ it('reads tag numbers from 31 in the long form, up to four bytes', function (str
     'number 31' => ['3012bf1f0102bf88020a04086970686f6e656f73', 'iphoneos'],
     'a four-byte number' => ['3016bf81818101020400bf88020a04086970686f6e656f73', 'iphoneos'],
     'number 1026 as 2 bytes' => ['300ebf88020a04086970686f6e656f73', 'iphoneos'],
+    'number 127 in one byte' => ['3012bf7f0102bf88020a04086970686f6e656f73', 'iphoneos'],
+    'a continuation byte 0x80' => ['3014bf8180000102bf88020a04086970686f6e656f73', 'iphoneos'],
 ]);
 
 it('refuses a long-form tag number below 31', function (): void {
@@ -367,3 +369,24 @@ it('refuses a public key algorithm that is not an OID and a named curve', functi
     'algorithm as a NULL' => [tlv(0x05, '').tlv(0x06, Der::P256)],
     'three parts' => [tlv(0x06, Der::EC_PUBLIC_KEY).tlv(0x06, Der::P256).tlv(0x05, '')],
 ]);
+
+it('refuses a TBSCertificate or a signature algorithm that is not a SEQUENCE', function (int $part): void {
+    $certificate = certificateWith();
+    $outer = Der::element($certificate, 0, strlen($certificate));
+    $offset = $outer['start'];
+
+    for ($index = 0; $index < $part; $index++) {
+        $offset = Der::element($certificate, $offset, $outer['end'])['end'];
+    }
+
+    $certificate[$offset] = "\x31";
+
+    expect(failureOf(fn () => Der::certificate($certificate)))->toBe(Failure::InvalidCertificate);
+})->with(['TBSCertificate' => [0], 'signature algorithm' => [1]]);
+
+it('reads no curve when the key algorithm is not an OBJECT IDENTIFIER', function (): void {
+    $publicKey = tlv(0x30, tlv(0x30, tlv(0x04, Der::EC_PUBLIC_KEY).tlv(0x06, Der::P256)).tlv(0x03, "\x00\x04".str_repeat("\x01", 64)));
+
+    expect(Der::certificate(certificateWith(publicKey: $publicKey))['curve'])->toBeNull()
+        ->and(Der::certificate(certificateWith())['curve'])->toBe(Der::P256);
+});

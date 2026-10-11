@@ -31,6 +31,17 @@ it('accepts counters at the edges of the 32-bit range', function (int $counter, 
     'a jump' => [1000, 3],
 ]);
 
+it('reads the counter as 4 big-endian bytes', function (int $counter, int $previous): void {
+    $key = attestedKey();
+    $assertion = TestAuthority::assertion($key['key'], testAppId(), 'POST /orders', $counter);
+
+    expect(testVerifier()->verifyAssertion($assertion, 'POST /orders', $key['publicKey'], $previous, Environment::Production)->counter)->toBe($counter);
+})->with([
+    'four different bytes' => [0x01020304, 0x01020303],
+    'the third byte' => [0x00010000, 0xFFFF],
+    'the second byte' => [0x00000100, 0xFF],
+]);
+
 it('refuses a counter that does not increase', function (int $counter, int $previous): void {
     expect(assertionFailure($counter, $previous))->toBe(Failure::CounterNotIncreased);
 })->with([
@@ -38,6 +49,7 @@ it('refuses a counter that does not increase', function (int $counter, int $prev
     'replayed' => [7, 7],
     'older' => [6, 7],
     'after the largest counter' => [0xFFFFFFFF, 0xFFFFFFFF],
+    'one less in the last byte' => [0x01020303, 0x01020304],
 ]);
 
 it('refuses other client data', function (): void {
@@ -268,6 +280,28 @@ it('refuses a stored key string that is not exactly one PUBLIC KEY block', funct
     // A valid P-256 key that OpenSSL reads (explicit parameters, one Base64 character per line): only the size cap refuses it.
     'over 1 KB' => [fn (string $key): string => (string) file_get_contents(__DIR__.'/../Fixtures/p256-explicit-one-char-lines.pem')],
 ]);
+
+/** The over-1 KB fixture key, wrapped again to exactly $size bytes: one Base64 character per line, LF or CRLF. */
+function keyOfSize(int $size): string
+{
+    $base64 = (string) preg_replace('/-----[^-]+-----|\s/', '', (string) file_get_contents(__DIR__.'/../Fixtures/p256-explicit-one-char-lines.pem'));
+    $crlf = $size - 52 - 2 * strlen($base64);
+    $body = '';
+
+    foreach (str_split($base64) as $index => $character) {
+        $body .= $character.($index < $crlf ? "\r\n" : "\n");
+    }
+
+    return "-----BEGIN PUBLIC KEY-----\n".$body."-----END PUBLIC KEY-----\n";
+}
+
+it('accepts a stored key of 1,024 bytes and refuses one of 1,025', function (): void {
+    expect(strlen(keyOfSize(1024)))->toBe(1024)
+        ->and(strlen(keyOfSize(1025)))->toBe(1025)
+        ->and(openssl_pkey_get_public(keyOfSize(1025)))->not->toBeFalse()
+        ->and(failureOf(fn () => testVerifier()->verifyAssertion("\xA0", 'x', keyOfSize(1024), 0, Environment::Production)))->toBe(Failure::MalformedInput)
+        ->and(fn () => testVerifier()->verifyAssertion("\xA0", 'x', keyOfSize(1025), 0, Environment::Production))->toThrow(\InvalidArgumentException::class);
+});
 
 it('uses an over-1 KB fixture that OpenSSL reads as P-256', function (): void {
     $pem = (string) file_get_contents(__DIR__.'/../Fixtures/p256-explicit-one-char-lines.pem');

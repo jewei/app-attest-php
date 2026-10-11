@@ -63,6 +63,7 @@ it('names what each category policy accepts', function (): void {
         ->and(CategoryPolicy::only(ValidationCategory::AppStore)->allows(ValidationCategory::TestFlight))->toBeFalse()
         ->and(CategoryPolicy::only(ValidationCategory::AppStore)->allows(null))->toBeFalse()
         ->and(CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore)->allows(null))->toBeTrue()
+        ->and(CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore)->allows(ValidationCategory::AppStore))->toBeTrue()
         ->and(CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore)->allows(ValidationCategory::Development))->toBeFalse()
         ->and(CategoryPolicy::onlyOrMissing(ValidationCategory::AppStore, ValidationCategory::TestFlight)->allows(ValidationCategory::TestFlight))->toBeTrue()
         ->and(CategoryPolicy::only(ValidationCategory::AppStore, ValidationCategory::TestFlight)->allows(ValidationCategory::TestFlight))->toBeTrue()
