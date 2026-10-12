@@ -7,6 +7,14 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- A real iOS 27.0.1 attestation and two assertions from a development-signed app as conformance fixtures (`spec/termakan-ios27-attestation.json`): category Development, bundle version `1`, the ED flag in all three.
+
+### Changed
+
+- The README says that `bundleVersion` is the build number (`CFBundleVersion`), as the real capture shows.
+
 ## [0.1.0] - 2026-10-12
 
 ### Added
