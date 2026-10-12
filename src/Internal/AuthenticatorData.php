@@ -21,9 +21,10 @@ use AppAttest\Exception\VerificationException;
  * there. In an assertion, the ED flag (0x80) is in the fixed part, and real
  * assertions with extensions set it (0xC0): extensions are read only with it,
  * and other trailing bytes are refused. Apple's 2026 sample attestation writes
- * extensions without the ED flag (0x40), although real iOS 27.0.1 and macOS
- * 27 attestations set it (0xC0), so an attestation's extensions are read whenever
- * bytes remain, and they are only as trustworthy as the app that sent them.
+ * extensions without the ED flag (0x40), although real iOS 27.0.1 and
+ * macOS 27 attestations set it (0xC0), so an attestation's extensions are
+ * read whenever bytes remain, and they are only as trustworthy as the app
+ * that sent them.
  */
 final readonly class AuthenticatorData
 {

@@ -21,14 +21,22 @@ function realIosObject(): array
     return ['object' => $object, 'certificate' => Der::certificate($x5c[0]->value)];
 }
 
-it('reads iphoneos and an access-control blob that is not the macOS blob from the real iOS 27.0.1 certificate', function (): void {
+it('reads iphoneos and Apple\'s iOS access-control blob from the real iOS 27.0.1 certificate', function (): void {
     $extensions = realIosObject()['certificate']['extensions'];
     $platform = Der::extensionValue($extensions, "\x2A\x86\x48\x86\xF7\x63\x64\x08\x07");
     $acl = Der::extensionValue($extensions, "\x2A\x86\x48\x86\xF7\x63\x64\x08\x06");
+    $sample = Cbor::decode((string) base64_decode(specString(loadSpec('apple-sample-attestation.json'), 'attestation'), true));
+    $statement = $sample instanceof CborMap ? $sample->get('attStmt') : null;
+    $x5c = $statement instanceof CborMap ? $statement->get('x5c') : null;
+    $sampleAcl = is_array($x5c) && $x5c[0] instanceof ByteString
+        ? Der::extensionValue(Der::certificate($x5c[0]->value)['extensions'], "\x2A\x86\x48\x86\xF7\x63\x64\x08\x06")
+        : null;
     $macAcl = (string) base64_decode('MEAMAjExMDowCQwCb2uhAwEB/zAJDAJvYaEDAQH/MAsMBG9kZWyhAwEB/zAVDARvc2duoAYMBHJzZWMwBaYDAgEB', true);
 
+    // The same blob as Apple's 2026 (iOS 27) sample, and not the macOS one.
     expect($platform === null ? null : Der::platform($platform))->toBe('iphoneos')
         ->and($acl)->not->toBeNull()
+        ->and($acl)->toBe($sampleAcl)
         ->and($acl !== null && str_contains($acl, $macAcl))->toBeFalse();
 });
 

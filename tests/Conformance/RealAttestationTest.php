@@ -44,8 +44,11 @@ function realIosCapture(): array
 it('records the hash of the challenge that the app attested', function (): void {
     $fixture = loadSpec('termakan-ios27-attestation.json');
 
-    expect(base64_encode(realIosCapture()['clientDataHash']))->toBe(specString($fixture, 'clientDataHashBase64'))
-        ->and(realIosCapture()['assertions'])->toHaveCount(2);
+    expect(base64_encode(realIosCapture()['clientDataHash']))->toBe(specString($fixture, 'clientDataHashBase64'));
+});
+
+it('records two assertions', function (): void {
+    expect(realIosCapture()['assertions'])->toHaveCount(2);
 });
 
 it('verifies a real iOS 27.0.1 attestation of a development-signed app', function (): void {
@@ -123,6 +126,7 @@ it('refuses the real assertions when anything differs', function (string $case, 
     match ($case) {
         'replayed' => [$assertion, $clientData, $previous] = [$first['assertion'], $first['clientData'], 1],
         'counter already seen' => $previous = 2,
+        'older after newer' => [$assertion, $clientData, $previous] = [$first['assertion'], $first['clientData'], 2],
         'client data of the other assertion' => $clientData = $first['clientData'],
         'another key' => $publicKey = attestedKey()['publicKey'],
         'App ID' => $verifier = new Verifier(new AppId('4L4SS26L9J', 'com.jewei.other'), Environment::Production, CategoryPolicy::any()),
@@ -134,6 +138,7 @@ it('refuses the real assertions when anything differs', function (string $case, 
 })->with([
     ['replayed', Failure::CounterNotIncreased],
     ['counter already seen', Failure::CounterNotIncreased],
+    ['older after newer', Failure::CounterNotIncreased],
     ['client data of the other assertion', Failure::InvalidSignature],
     ['another key', Failure::InvalidSignature],
     ['App ID', Failure::AppIdMismatch],
