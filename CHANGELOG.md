@@ -7,12 +7,15 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-12
+
 ### Added
 
 - A real iOS 27.0.1 attestation and two assertions from a development-signed app as conformance fixtures (`spec/termakan-ios27-attestation.json`): category Development, bundle version `1`, the ED flag in all three.
 
 ### Changed
 
+- The public API is stable from this release: breaking changes need a new major version.
 - The README says that `bundleVersion` is the build number (`CFBundleVersion`), as the real capture shows.
 
 ## [0.1.0] - 2026-10-12
@@ -32,5 +35,6 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `SECURITY.md`: private vulnerability reports.
 - `Failure::UnsupportedPlatform` for keys whose certificate names a platform other than `iphoneos`, carries Apple's macOS access-control blob, or carries an access-control blob without the platform extension.
 
-[Unreleased]: https://github.com/jewei/app-attest-php/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jewei/app-attest-php/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/jewei/app-attest-php/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/jewei/app-attest-php/releases/tag/v0.1.0
