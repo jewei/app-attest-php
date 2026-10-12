@@ -45,3 +45,10 @@ it('records the hash of the third-party macOS attestation fixture', function ():
     expect(hash('sha256', $file))->toBe(specString($provenance, 'sha256'))
         ->and(is_file(__DIR__.'/../../spec/third-party/LICENSE-arkavo'))->toBeTrue();
 });
+
+it('records the hash of the recorded iOS 27.0.1 fixture', function (): void {
+    $provenance = specObject(loadSpec('provenance.json'), 'termakan-ios27-attestation.json');
+    $file = (string) file_get_contents(__DIR__.'/../../spec/termakan-ios27-attestation.json');
+
+    expect(hash('sha256', $file))->toBe(specString($provenance, 'sha256'));
+});

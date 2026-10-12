@@ -32,5 +32,12 @@
     "retrieved": "2026-10-12",
     "sha256": "ae79a975c7ef71627ced742bfcb247a17f392b00771b932368faeb79369b30c6",
     "evidence": "A real attestation from macOS 27.0 (com.arkavo.ArkavoCreator; its developer dates the capture 2026-09-20, local time; the receipt and the certificate serial number say 2026-09-21T01:47:03Z). Its platform field is macosx and its access-control blob is the one Apple documents for macOS. The file is unchanged from the upstream commit; its _comment refers to the upstream README."
+  },
+  "termakan-ios27-attestation.json": {
+    "source": "Recorded on 2026-10-12 by this package's author: termakan (4L4SS26L9J.com.jewei.termakan), a development-signed Debug build installed by Xcode on an iPhone with iOS 27.0.1, launched with -TermakanCaptureFixture; the file came to the Mac by AirDrop.",
+    "license": "MIT, as the package",
+    "recorded": "2026-10-12",
+    "sha256": "c65797c5b0243e68c744aa90edb752bcb320d757887ce36e963c3a19c787d1ad",
+    "evidence": "The certificate chain verifies to the pinned root, so Apple made the credential certificate and the nonce in it. The key was new and never enrolled on any server, so the fixture opens no account. The file is unchanged from the device."
   }
 }
