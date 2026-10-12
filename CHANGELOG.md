@@ -7,6 +7,8 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - `Verifier::verifyAttestation()` and `Verifier::verifyAssertion()`, following
@@ -21,3 +23,6 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `CategoryPolicy::only()`, `onlyOrMissing()`, and `any()` for the validation category.
 - `SECURITY.md`: private vulnerability reports.
 - `Failure::UnsupportedPlatform` for keys whose certificate names a platform other than `iphoneos`, carries Apple's macOS access-control blob, or carries an access-control blob without the platform extension.
+
+[Unreleased]: https://github.com/jewei/app-attest-php/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/jewei/app-attest-php/releases/tag/v0.1.0
