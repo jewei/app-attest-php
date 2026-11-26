@@ -20,7 +20,7 @@ The key identifier inside an attestation's authenticator data. It must equal the
 
 ### Client data hash
 
-The bytes that the app passes to `attestKey()` or `generateAssertion()`. For an attestation, the server's one-time challenge or its SHA-256. For an assertion, SHA-256 of the client data.
+The bytes that the app passes to `attestKey()` or `generateAssertion()`. For an attestation, use SHA-256 of the server's one-time challenge (32 bytes). The package accepts other non-empty lengths because Apple's sample attestations pass the raw challenge text; the length does not protect the attestation's extensions (see the README). For an assertion, SHA-256 of the client data.
 
 ### Client data
 
