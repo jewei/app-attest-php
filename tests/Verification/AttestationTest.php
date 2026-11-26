@@ -158,7 +158,7 @@ it('refuses a credential certificate whose keyUsage lacks digitalSignature or ha
     'critical, no digitalSignature' => ['keyUsage = critical,keyAgreement'],
     'not critical, no digitalSignature' => ['keyUsage = keyAgreement'],
     'not critical, keyCertSign with digitalSignature' => ['keyUsage = digitalSignature,keyCertSign'],
-    'critical, malformed DER' => ['2.5.29.15 = critical,DER:03:02:00:06'],
+    'critical, digitalSignature only but not minimal DER' => ['2.5.29.15 = critical,DER:03:02:00:80'],
     'critical, not a BIT STRING' => ['2.5.29.15 = critical,DER:04:02:07:80'],
 ]);
 
