@@ -277,6 +277,15 @@ it('reads keyCertSign from keyUsage', function (string $value, bool $expected): 
     'two bytes with decipherOnly' => ["\x03\x03\x07\x04\x80", true],
 ]);
 
+it('returns the first byte of keyUsage named bits', function (string $value, int $expected): void {
+    expect(Der::keyUsage($value))->toBe($expected);
+})->with([
+    'digitalSignature' => ["\x03\x02\x07\x80", Der::DIGITAL_SIGNATURE],
+    'Apple credential usage' => ["\x03\x02\x04\xF0", 0xF0],
+    'keyCertSign and cRLSign' => ["\x03\x02\x01\x06", Der::KEY_CERT_SIGN | 0x02],
+    'decipherOnly only' => ["\x03\x03\x07\x00\x80", 0x00],
+]);
+
 it('refuses malformed keyUsage', function (string $value): void {
     expect(failureOf(fn () => Der::allowsCertificateSigning($value)))->toBe(Failure::InvalidCertificate);
 })->with([
