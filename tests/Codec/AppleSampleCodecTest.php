@@ -73,5 +73,6 @@ it('reads the validity and names of the sample certificates', function (): void 
         ->and($credential['issuer'])->toBe($intermediate['subject'])
         ->and(Der::basicConstraints((string) Der::extensionValue($intermediate['extensions'], Der::BASIC_CONSTRAINTS)))->toBe(['ca' => true, 'pathLength' => 0])
         ->and(Der::allowsCertificateSigning((string) Der::extensionValue($intermediate['extensions'], Der::KEY_USAGE)))->toBeTrue()
-        ->and(Der::basicConstraints((string) Der::extensionValue($credential['extensions'], Der::BASIC_CONSTRAINTS)))->toBe(['ca' => false, 'pathLength' => null]);
+        ->and(Der::basicConstraints((string) Der::extensionValue($credential['extensions'], Der::BASIC_CONSTRAINTS)))->toBe(['ca' => false, 'pathLength' => null])
+        ->and(Der::keyUsage((string) Der::extensionValue($credential['extensions'], Der::KEY_USAGE)) & (Der::DIGITAL_SIGNATURE | Der::KEY_CERT_SIGN))->toBe(Der::DIGITAL_SIGNATURE);
 });

@@ -23,6 +23,7 @@ use OpenSSLCertificate;
  *   parses any key from the device.
  * - Neither certificate has a critical extension other than basicConstraints and keyUsage.
  * - The intermediate is a CA (basicConstraints cA) with keyCertSign; the credential certificate is not a CA.
+ * - A keyUsage on the credential certificate, critical or not, has digitalSignature and not keyCertSign.
  * - Each issuer name equals the next certificate's subject name, byte for byte.
  * - All three certificates are valid at the check time.
  * - The anchor's key signed the intermediate, then the intermediate's key signed
@@ -62,6 +63,14 @@ final class CertificateChain
 
         if (self::isCa($credential['extensions'])) {
             throw self::invalid('The credential certificate is a CA certificate.');
+        }
+
+        // Apple's credential certificates mark keyUsage critical, so the verifier must check it (RFC 5280, section 4.2).
+        $usage = Der::extensionValue($credential['extensions'], Der::KEY_USAGE);
+        $bits = $usage === null ? Der::DIGITAL_SIGNATURE : Der::keyUsage($usage);
+
+        if (($bits & Der::DIGITAL_SIGNATURE) === 0 || ($bits & Der::KEY_CERT_SIGN) !== 0) {
+            throw self::invalid('The credential certificate\'s keyUsage lacks digitalSignature or has keyCertSign.');
         }
 
         if ($intermediate['issuer'] !== $anchor->fields['subject'] || $credential['issuer'] !== $intermediate['subject']) {

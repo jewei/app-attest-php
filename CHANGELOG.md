@@ -7,6 +7,15 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The credential certificate's key usage is checked when present: it must have `digitalSignature` and not `keyCertSign`, and malformed DER is refused. Before, Apple's critical key usage on it was accepted without a check.
+- Basic constraints with a path length but no CA flag are refused (RFC 5280, section 4.2.1.9).
+
+### Changed
+
+- CONTEXT.md and the README say to pass SHA-256 of the challenge as the client data hash, and why the package does not check its length.
+
 ## [1.0.0] - 2026-10-12
 
 ### Added

@@ -259,6 +259,8 @@ it('refuses malformed basicConstraints', function (string $value): void {
     'path length of three bytes' => ["\x30\x08\x01\x01\xFF\x02\x03\x01\x00\x00"],
     'empty path length' => ["\x30\x05\x01\x01\xFF\x02\x00"],
     'path length before the flag' => ["\x30\x06\x02\x01\x01\x01\x01\xFF"],
+    'path length 0 without cA' => ["\x30\x03\x02\x01\x00"],
+    'path length 1 without cA' => ["\x30\x03\x02\x01\x01"],
     'the flag as an OCTET STRING' => ["\x30\x03\x04\x01\xFF"],
     'extra field' => ["\x30\x05\x01\x01\xFF\x05\x00"],
     'trailing byte' => ["\x30\x03\x01\x01\xFF\x00"],
@@ -275,6 +277,15 @@ it('reads keyCertSign from keyUsage', function (string $value, bool $expected): 
     'every bit but keyCertSign' => ["\x03\x02\x00\xFB", false],
     'Apple credential usage' => ["\x03\x02\x04\xF0", false],
     'two bytes with decipherOnly' => ["\x03\x03\x07\x04\x80", true],
+]);
+
+it('returns the first byte of keyUsage named bits', function (string $value, int $expected): void {
+    expect(Der::keyUsage($value))->toBe($expected);
+})->with([
+    'digitalSignature' => ["\x03\x02\x07\x80", Der::DIGITAL_SIGNATURE],
+    'Apple credential usage' => ["\x03\x02\x04\xF0", 0xF0],
+    'keyCertSign and cRLSign' => ["\x03\x02\x01\x06", Der::KEY_CERT_SIGN | 0x02],
+    'decipherOnly only' => ["\x03\x03\x07\x00\x80", 0x00],
 ]);
 
 it('refuses malformed keyUsage', function (string $value): void {

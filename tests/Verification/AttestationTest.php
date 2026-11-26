@@ -150,6 +150,26 @@ it('refuses a credential certificate that is a CA', function (): void {
         ->toBe(Failure::InvalidCertificate);
 });
 
+it('refuses a credential certificate whose keyUsage lacks digitalSignature or has keyCertSign', function (string $keyUsage): void {
+    expect(attestationFailure(['credentialExtensions' => "basicConstraints = critical,CA:FALSE\n".$keyUsage]))
+        ->toBe(Failure::InvalidCertificate);
+})->with([
+    'critical, keyCertSign with digitalSignature' => ['keyUsage = critical,digitalSignature,keyCertSign'],
+    'critical, no digitalSignature' => ['keyUsage = critical,keyAgreement'],
+    'not critical, no digitalSignature' => ['keyUsage = keyAgreement'],
+    'not critical, keyCertSign with digitalSignature' => ['keyUsage = digitalSignature,keyCertSign'],
+    'critical, digitalSignature only but not minimal DER' => ['2.5.29.15 = critical,DER:03:02:00:80'],
+    'critical, not a BIT STRING' => ['2.5.29.15 = critical,DER:04:02:07:80'],
+]);
+
+it('accepts a credential certificate with Apple\'s keyUsage, a non-critical one, or none', function (string $keyUsage): void {
+    expect(attestationFailure(['credentialExtensions' => 'basicConstraints = critical,CA:FALSE'.$keyUsage]))->toBeNull();
+})->with([
+    'Apple\'s critical usage' => ["\nkeyUsage = critical,digitalSignature,nonRepudiation,keyEncipherment,dataEncipherment"],
+    'digitalSignature only, not critical' => ["\nkeyUsage = digitalSignature"],
+    'no keyUsage' => [''],
+]);
+
 it('refuses a critical extension that the verifier does not check', function (): void {
     expect(attestationFailure(['credentialExtensions' => "basicConstraints = critical,CA:FALSE\n1.2.3.4 = critical,DER:05:00"]))
         ->toBe(Failure::InvalidCertificate);

@@ -43,6 +43,12 @@ final class Der
     /** OID 2.5.29.15, keyUsage, as DER content bytes. */
     public const string KEY_USAGE = "\x55\x1D\x0F";
 
+    /** keyUsage digitalSignature (bit 0) in the first byte that keyUsage() returns. */
+    public const int DIGITAL_SIGNATURE = 0x80;
+
+    /** keyUsage keyCertSign (bit 5) in the first byte that keyUsage() returns. */
+    public const int KEY_CERT_SIGN = 0x04;
+
     /** OID 1.2.840.10045.2.1, id-ecPublicKey. */
     public const string EC_PUBLIC_KEY = "\x2A\x86\x48\xCE\x3D\x02\x01";
 
@@ -192,6 +198,11 @@ final class Der
         }
 
         if ($fields !== [] && $fields[0]['tag'] === self::INTEGER) {
+            // RFC 5280, section 4.2.1.9: pathLenConstraint is only meaningful when cA is TRUE.
+            if (! $ca) {
+                throw self::invalid('basicConstraints has a path length but is not a CA.');
+            }
+
             $pathLength = self::smallInteger($value, $fields[0]);
             $fields = array_slice($fields, 1);
         }
@@ -205,6 +216,15 @@ final class Der
 
     /** Decodes a keyUsage BIT STRING and reports whether keyCertSign (bit 5) is set. */
     public static function allowsCertificateSigning(string $value): bool
+    {
+        return (self::keyUsage($value) & self::KEY_CERT_SIGN) !== 0;
+    }
+
+    /**
+     * Decodes a keyUsage BIT STRING and returns its first byte of named bits: digitalSignature (bit 0) is
+     * DIGITAL_SIGNATURE and keyCertSign (bit 5) is KEY_CERT_SIGN.
+     */
+    public static function keyUsage(string $value): int
     {
         $bits = self::whole($value, self::BIT_STRING, 'keyUsage');
 
@@ -223,7 +243,7 @@ final class Der
             throw self::invalid('keyUsage is not minimal DER: unused bits are set or named bits trail as zeros.');
         }
 
-        return (ord($value[$bits['start'] + 1]) & 0x04) !== 0;
+        return ord($value[$bits['start'] + 1]);
     }
 
     /**
