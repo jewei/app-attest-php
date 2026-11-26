@@ -259,6 +259,8 @@ it('refuses malformed basicConstraints', function (string $value): void {
     'path length of three bytes' => ["\x30\x08\x01\x01\xFF\x02\x03\x01\x00\x00"],
     'empty path length' => ["\x30\x05\x01\x01\xFF\x02\x00"],
     'path length before the flag' => ["\x30\x06\x02\x01\x01\x01\x01\xFF"],
+    'path length 0 without cA' => ["\x30\x03\x02\x01\x00"],
+    'path length 1 without cA' => ["\x30\x03\x02\x01\x01"],
     'the flag as an OCTET STRING' => ["\x30\x03\x04\x01\xFF"],
     'extra field' => ["\x30\x05\x01\x01\xFF\x05\x00"],
     'trailing byte' => ["\x30\x03\x01\x01\xFF\x00"],

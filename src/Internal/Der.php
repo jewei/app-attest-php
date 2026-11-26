@@ -198,6 +198,11 @@ final class Der
         }
 
         if ($fields !== [] && $fields[0]['tag'] === self::INTEGER) {
+            // RFC 5280, section 4.2.1.9: pathLenConstraint is only meaningful when cA is TRUE.
+            if (! $ca) {
+                throw self::invalid('basicConstraints has a path length but is not a CA.');
+            }
+
             $pathLength = self::smallInteger($value, $fields[0]);
             $fields = array_slice($fields, 1);
         }
