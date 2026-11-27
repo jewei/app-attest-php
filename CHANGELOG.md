@@ -7,6 +7,8 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-11-27
+
 ### Fixed
 
 - The credential certificate's key usage is checked when present: it must have `digitalSignature` and not `keyCertSign`, and malformed DER is refused. Before, Apple's critical key usage on it was accepted without a check.
@@ -44,6 +46,7 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `SECURITY.md`: private vulnerability reports.
 - `Failure::UnsupportedPlatform` for keys whose certificate names a platform other than `iphoneos`, carries Apple's macOS access-control blob, or carries an access-control blob without the platform extension.
 
-[Unreleased]: https://github.com/jewei/app-attest-php/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/jewei/app-attest-php/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/jewei/app-attest-php/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/jewei/app-attest-php/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/jewei/app-attest-php/releases/tag/v0.1.0
